@@ -97,6 +97,7 @@ class ApiContractTest {
                 password = null,
                 nostrRelays = emptyList(),
                 backendConfig = invalidBackend,
+                checkBlocklist = null,
             )
             fail("an unknown backend must be rejected before native resources are started")
         } catch (error: TakerException) {

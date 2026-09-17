@@ -109,6 +109,7 @@ class ApiContractTest(unittest.TestCase):
                 None,
                 [],
                 invalid_backend,
+                None,
             )
         self.assertEqual(
             error.exception.msg,

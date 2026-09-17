@@ -157,6 +157,7 @@ fn init_taker(swap: &Swap) -> Arc<Taker> {
         // return makers announced by unrelated concurrent jobs.
         Some(Vec::new()),
         backend_config,
+        None,
     )
     .expect("init taker")
 }

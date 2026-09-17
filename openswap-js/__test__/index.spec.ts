@@ -7,7 +7,8 @@ const importedBinding = nativeBinding as unknown as Record<string, unknown>
 const binding = (importedBinding.default ?? importedBinding) as Record<string, unknown>
 
 test('native module exports the complete runtime surface', (t) => {
-  t.deepEqual(Object.keys(binding).sort(), ['AddressType', 'Taker', 'TakerBehavior', 'TakerError'])
+  const publicExports = Object.keys(binding).filter((key) => key !== '__napiBindingTarget')
+  t.deepEqual(publicExports.sort(), ['AddressType', 'Taker', 'TakerBehavior', 'TakerError'])
   const addressTypes = binding.AddressType as Record<string, number>
   t.deepEqual(Object.getOwnPropertyNames(addressTypes), ['P2WPKH', 'P2TR'])
   t.is(addressTypes.P2WPKH, 0)

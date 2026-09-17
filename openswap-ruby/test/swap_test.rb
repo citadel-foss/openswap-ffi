@@ -159,7 +159,8 @@ def run_swap(name, backend, protocol, addr_type)
     'tcp://127.0.0.1:28332',   # Bitcoin Core ZMQ endpoint
     WALLET_PASSWORD,           # wallet encryption password
     [],                        # poll only this CI job's local makers
-    backend_config             # backend selection (nil for rpc)
+    backend_config,            # backend selection (nil for rpc)
+    nil                        # use taker config's blocklist setting
   )
 
   wait_for_suitable_makers(taker, name, protocol, maker_addresses)

@@ -265,6 +265,7 @@ impl Taker {
     zmq_addr: String,
     password: Option<String>,
     backend_config: Option<BackendConfig>,
+    check_blocklist: Option<bool>,
   ) -> Result<Self> {
     let data_dir = data_dir.map(PathBuf::from);
     let backend = match backend_config {
@@ -286,6 +287,7 @@ impl Taker {
       control_port,
       tor_auth_password,
       socks_port: 9050,
+      check_blocklist,
       password,
       connection_type: ConnectionType::Tor,
       nostr_relays: TakerInitConfig::default().nostr_relays,

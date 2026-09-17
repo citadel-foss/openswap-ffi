@@ -61,6 +61,7 @@ describe('React Native public API contract', () => {
       password: 'wallet-secret',
       nostrRelays: ['ws://relay.example'],
       backendConfig,
+      checkBlocklist: true,
     })
 
     expect(mockInit).toHaveBeenCalledWith(
@@ -73,6 +74,7 @@ describe('React Native public API contract', () => {
       'wallet-secret',
       ['ws://relay.example'],
       backendConfig,
+      true,
     )
   })
 
@@ -106,6 +108,7 @@ describe('React Native public API contract', () => {
       undefined,
       undefined,
       'tcp://node:28332',
+      undefined,
       undefined,
       undefined,
       undefined,

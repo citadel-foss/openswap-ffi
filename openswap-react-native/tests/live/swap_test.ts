@@ -216,6 +216,7 @@ async function runSwap(swap: SwapCase) {
     WALLET_PASSWORD,
     [],
     backendConfig,
+    undefined,
   );
   LIVE_TEST_TAKERS.push(taker);
 

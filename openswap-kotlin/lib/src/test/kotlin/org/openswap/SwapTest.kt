@@ -167,6 +167,7 @@ class SwapTest {
             // Public discovery can return makers from another concurrent CI job.
             nostrRelays = emptyList(),
             backendConfig = backendConfig,
+            checkBlocklist = null,
         )
         synchronized(liveTakers) { liveTakers.add(taker) }
 

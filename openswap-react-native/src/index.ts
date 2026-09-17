@@ -29,6 +29,7 @@ export type TakerInitConfig = {
   password?: string | null
   nostrRelays?: string[] | null
   backendConfig?: BackendConfig | null
+  checkBlocklist?: boolean | null
 }
 
 export class OpenswapTaker {
@@ -54,6 +55,7 @@ export class OpenswapTaker {
       config.password ?? undefined,
       config.nostrRelays ?? undefined,
       config.backendConfig ?? undefined,
+      config.checkBlocklist ?? undefined,
     )
     return new OpenswapTaker(taker)
   }

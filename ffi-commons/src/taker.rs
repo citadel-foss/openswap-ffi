@@ -156,7 +156,7 @@ pub struct Taker {
 
 #[uniffi::export]
 impl Taker {
-    #[uniffi::constructor]
+    #[uniffi::constructor(default(check_blocklist = None))]
     // #[allow(clippy::too_many_arguments)]
     ///  Initializes a Taker structure.
     ///
@@ -172,6 +172,8 @@ impl Taker {
     ///     a new wallet with the given name will be created.
     ///   - `None`: Create a new wallet file with the default name `taker-wallet`.
     /// - If `rpc_config` = `None`: Use the default [`RpcConfig`]
+    /// - `check_blocklist`: `Some(true)` enables funding-source screening;
+    ///   `None` uses the taker configuration file's setting.
     #[allow(clippy::too_many_arguments)]
     pub fn init(
         data_dir: Option<String>,
@@ -184,6 +186,7 @@ impl Taker {
         password: Option<String>,
         nostr_relays: Option<Vec<String>>,
         backend_config: Option<BackendConfig>,
+        check_blocklist: Option<bool>,
     ) -> Result<Arc<Self>, TakerError> {
         let data_dir = data_dir.map(PathBuf::from);
         let backend = match backend_config {
@@ -205,6 +208,7 @@ impl Taker {
             control_port,
             tor_auth_password,
             socks_port: 9050,
+            check_blocklist,
             password,
             connection_type: ConnectionType::Tor,
             // `None` keeps the compiled-in default relays; `Some` lets callers

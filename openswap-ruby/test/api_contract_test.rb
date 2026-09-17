@@ -27,7 +27,7 @@ class ApiContractTest < Minitest::Test
     )
     error = assert_raises(Openswap::TakerError::General) do
       Openswap::Taker.init(
-        nil, nil, nil, nil, nil, 'tcp://127.0.0.1:28332', nil, [], backend
+        nil, nil, nil, nil, nil, 'tcp://127.0.0.1:28332', nil, [], backend, nil
       )
     end
     assert_equal 'Invalid backend kind: invalid (expected rpc or electrum)', error.msg

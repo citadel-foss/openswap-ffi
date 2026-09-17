@@ -171,6 +171,7 @@ def run_swap(name, data_dir, backend, protocol, addr_type):
         # makers from unrelated jobs, so poll this stack's onion addresses.
         nostr_relays=[],
         backend_config=backend_config,
+        check_blocklist=None,
     )
     LIVE_TEST_TAKERS.append(taker)
 
