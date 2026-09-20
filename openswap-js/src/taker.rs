@@ -44,10 +44,16 @@ pub struct SwapParams {
   pub manually_selected_outpoints: Option<Vec<OutPoint>>,
   pub preferred_makers: Option<Vec<String>>,
   pub payment_address: Option<String>,
+  pub max_input_budget: Option<u32>,
+  pub feerate: Option<i64>,
 }
 
 fn checked_satoshi_amount(amount: i64) -> Result<u64> {
   u64::try_from(amount).map_err(|_| napi::Error::from_reason("Amount must be non-negative"))
+}
+
+fn checked_feerate(feerate: i64) -> Result<u64> {
+  u64::try_from(feerate).map_err(|_| napi::Error::from_reason("Feerate must be non-negative"))
 }
 
 impl TryFrom<SwapParams> for OpenswapSwapParams {
@@ -90,16 +96,25 @@ impl TryFrom<SwapParams> for OpenswapSwapParams {
       })
       .transpose()?;
 
-    Ok(OpenswapSwapParams {
-      protocol,
-      send_amount,
-      maker_count: params.maker_count as usize,
-      tx_count: params.tx_count.unwrap_or(1),
-      required_confirms: params.required_confirms.unwrap_or(1),
-      manually_selected_outpoints,
-      preferred_makers: params.preferred_makers,
-      payment_address,
-    })
+    let mut openswap_params =
+      OpenswapSwapParams::new(protocol, send_amount, params.maker_count as usize);
+    if let Some(tx_count) = params.tx_count {
+      openswap_params.tx_count = tx_count;
+    }
+    if let Some(max_input_budget) = params.max_input_budget {
+      openswap_params.max_input_budget = max_input_budget;
+    }
+    if let Some(feerate) = params.feerate {
+      openswap_params.feerate = checked_feerate(feerate)?;
+    }
+    if let Some(required_confirms) = params.required_confirms {
+      openswap_params.required_confirms = required_confirms;
+    }
+    openswap_params.manually_selected_outpoints = manually_selected_outpoints;
+    openswap_params.preferred_makers = params.preferred_makers;
+    openswap_params.payment_address = payment_address;
+
+    Ok(openswap_params)
   }
 }
 
@@ -117,6 +132,8 @@ mod tests {
       manually_selected_outpoints: None,
       preferred_makers: None,
       payment_address: None,
+      max_input_budget: None,
+      feerate: None,
     }
   }
 
@@ -136,8 +153,21 @@ mod tests {
     assert_eq!(defaults.protocol, ProtocolVersion::Legacy);
     assert_eq!(defaults.send_amount.to_sat(), 50_000);
     assert_eq!(defaults.maker_count, 2);
-    assert_eq!(defaults.tx_count, 1);
+    assert_eq!(defaults.tx_count, 2);
+    assert_eq!(defaults.max_input_budget, 2);
+    assert_eq!(defaults.feerate, 1);
     assert_eq!(defaults.required_confirms, 1);
+
+    let mut explicit = params(None, 50_000);
+    explicit.tx_count = Some(4);
+    explicit.max_input_budget = Some(3);
+    explicit.feerate = Some(4);
+    explicit.required_confirms = Some(6);
+    let explicit = OpenswapSwapParams::try_from(explicit).unwrap();
+    assert_eq!(explicit.tx_count, 4);
+    assert_eq!(explicit.max_input_budget, 3);
+    assert_eq!(explicit.feerate, 4);
+    assert_eq!(explicit.required_confirms, 6);
 
     for value in ["Legacy", "legacy"] {
       assert_eq!(
@@ -158,7 +188,7 @@ mod tests {
   }
 
   #[test]
-  fn swap_params_validate_user_supplied_protocol_outpoint_and_address() {
+  fn swap_params_validate_user_supplied_protocol_outpoint_address_and_feerate() {
     let protocol_error = OpenswapSwapParams::try_from(params(Some("Unified"), 1)).unwrap_err();
     assert_eq!(
       protocol_error.reason,
@@ -188,6 +218,15 @@ mod tests {
         .unwrap_err()
         .reason,
       format!("Invalid payment address '{invalid_address}': {address_error}")
+    );
+
+    let mut negative_feerate = params(None, 1);
+    negative_feerate.feerate = Some(-1);
+    assert_eq!(
+      OpenswapSwapParams::try_from(negative_feerate)
+        .unwrap_err()
+        .reason,
+      "Feerate must be non-negative"
     );
   }
 }

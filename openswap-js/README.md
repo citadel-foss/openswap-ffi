@@ -106,7 +106,9 @@ const swapParams: SwapParams = {
   protocol: undefined,                    // optional protocol hint; omit to use the backend default
   sendAmount: 1_000_000,                  // total sats to swap
   makerCount: 2,                          // number of maker hops
-  txCount: 1,                             // number of funding transaction splits
+  txCount: 2,                             // maximum funding transaction splits per hop
+  maxInputBudget: 2,                      // inputs per forwarding tx whose fee the taker covers
+  feerate: 1,                             // sats/vB used by every swap transaction
   requiredConfirms: 1,                    // minimum funding confirmations
   manuallySelectedOutpoints: undefined,   // optional explicit wallet UTXOs
   preferredMakers: undefined,             // optional maker addresses to prefer
@@ -144,7 +146,9 @@ const swapParams: SwapParams = {
   protocol: protocolHint,                 // optional protocol hint string
   sendAmount: sendAmountSats,             // total sats to swap
   makerCount: makerCount,                 // number of maker hops
-  txCount: txCount,                       // number of funding transaction splits
+  txCount: txCount,                       // maximum funding transaction splits per hop
+  maxInputBudget: maxInputBudget,         // inputs per forwarding tx whose fee the taker covers
+  feerate: feerate,                       // sats/vB used by every swap transaction
   requiredConfirms: requiredConfirms,     // minimum funding confirmations
   manuallySelectedOutpoints: outpoints,   // optional explicit wallet UTXOs
   preferredMakers: preferredMakers,       // optional maker addresses to prefer

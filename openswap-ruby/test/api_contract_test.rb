@@ -137,7 +137,8 @@ class ApiContractTest < Minitest::Test
       protocol: 'Taproot', send_amount: 500_000, maker_count: 2,
       tx_count: 3, required_confirms: 4,
       manually_selected_outpoints: [outpoint],
-      preferred_makers: ['maker.onion:6102'], payment_address: nil
+      preferred_makers: ['maker.onion:6102'], payment_address: nil,
+      max_input_budget: 5, feerate: 6
     )
     assert_equal 'Taproot', params.protocol
     assert_equal 500_000, params.send_amount
@@ -147,6 +148,8 @@ class ApiContractTest < Minitest::Test
     assert_equal [outpoint], params.manually_selected_outpoints
     assert_equal ['maker.onion:6102'], params.preferred_makers
     assert_nil params.payment_address
+    assert_equal 5, params.max_input_budget
+    assert_equal 6, params.feerate
 
     fee = Openswap::MakerFeeInfo.new(
       maker_index: 1, maker_address: 'maker.onion:6102', base_fee: 100,

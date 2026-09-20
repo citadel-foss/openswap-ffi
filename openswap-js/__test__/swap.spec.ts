@@ -208,6 +208,8 @@ for (const { name, backend, protocol, addressType } of selectedCases) {
       sendAmount: SWAP_AMOUNT,
       makerCount: 2,
       txCount: 1,
+      maxInputBudget: 2,
+      feerate: 1,
       requiredConfirms: 1,
       preferredMakers: makerAddresses,
       paymentAddress: undefined,

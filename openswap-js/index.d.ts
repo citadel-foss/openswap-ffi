@@ -229,6 +229,8 @@ export interface SwapParams {
   sendAmount: number
   makerCount: number
   txCount?: number
+  maxInputBudget?: number
+  feerate?: number
   requiredConfirms?: number
   manuallySelectedOutpoints?: Array<OutPoint>
   preferredMakers?: Array<string>

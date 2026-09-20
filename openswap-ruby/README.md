@@ -104,7 +104,9 @@ swap_params = Openswap::SwapParams.new(
   protocol: nil,                           # optional protocol hint; nil uses the backend default
   send_amount: 1_000_000,                  # total sats to swap
   maker_count: 2,                          # number of maker hops
-  tx_count: 1,                             # number of funding transaction splits
+  tx_count: 2,                             # maximum funding transaction splits per hop
+  max_input_budget: 2,                     # inputs per forwarding tx whose fee the taker covers
+  feerate: 1,                              # sats/vB used by every swap transaction
   required_confirms: 1,                    # minimum funding confirmations
   manually_selected_outpoints: nil,        # optional explicit wallet UTXOs
   preferred_makers: nil,                   # optional maker addresses to prefer
@@ -144,7 +146,9 @@ swap_params = Openswap::SwapParams.new(
   protocol: protocol_hint,                 # optional protocol hint string
   send_amount: send_amount_sats,           # total sats to swap
   maker_count: maker_count,                # number of maker hops
-  tx_count: tx_count,                      # number of funding transaction splits
+  tx_count: tx_count,                      # maximum funding transaction splits per hop
+  max_input_budget: max_input_budget,      # inputs per forwarding tx whose fee the taker covers
+  feerate: feerate,                        # sats/vB used by every swap transaction
   required_confirms: required_confirms,    # minimum funding confirmations
   manually_selected_outpoints: outpoints,  # optional explicit wallet UTXOs
   preferred_makers: preferred_makers,      # optional maker addresses to prefer
