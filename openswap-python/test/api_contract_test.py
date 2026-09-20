@@ -293,6 +293,8 @@ class ApiContractTest(unittest.TestCase):
             manually_selected_outpoints=[outpoint],
             preferred_makers=["maker.onion:6102"],
             payment_address=None,
+            max_input_budget=5,
+            feerate=6,
         )
         self.assert_record(
             params,
@@ -304,6 +306,8 @@ class ApiContractTest(unittest.TestCase):
             manually_selected_outpoints=[outpoint],
             preferred_makers=["maker.onion:6102"],
             payment_address=None,
+            max_input_budget=5,
+            feerate=6,
         )
 
         fee = openswap.MakerFeeInfo(

@@ -30,9 +30,13 @@ func assertGeneratedBindingShapes() {
     requiredConfirms: 1,
     manuallySelectedOutpoints: nil,
     preferredMakers: nil,
-    paymentAddress: nil
+    paymentAddress: nil,
+    maxInputBudget: 5,
+    feerate: 6
   )
   precondition(params.sendAmount == 500_000)
+  precondition(params.maxInputBudget == 5)
+  precondition(params.feerate == 6)
 }
 SWIFT
 

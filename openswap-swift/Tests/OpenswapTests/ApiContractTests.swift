@@ -177,7 +177,9 @@ final class ApiContractTests: XCTestCase {
             requiredConfirms: 4,
             manuallySelectedOutpoints: [outpoint],
             preferredMakers: ["maker.onion:6102"],
-            paymentAddress: nil)
+            paymentAddress: nil,
+            maxInputBudget: 5,
+            feerate: 6)
         XCTAssertEqual(params.protocol, "Taproot")
         XCTAssertEqual(params.sendAmount, 500_000)
         XCTAssertEqual(params.makerCount, 2)
@@ -186,6 +188,8 @@ final class ApiContractTests: XCTestCase {
         XCTAssertEqual(params.manuallySelectedOutpoints, [outpoint])
         XCTAssertEqual(params.preferredMakers, ["maker.onion:6102"])
         XCTAssertNil(params.paymentAddress)
+        XCTAssertEqual(params.maxInputBudget, 5)
+        XCTAssertEqual(params.feerate, 6)
 
         let fee = MakerFeeInfo(
             makerIndex: 1,

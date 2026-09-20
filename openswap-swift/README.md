@@ -105,10 +105,12 @@ let swapParams = SwapParams(
     protocol: nil,                                  // optional protocol hint; nil uses the backend default
     sendAmount: 1_000_000,                          // total sats to swap
     makerCount: 2,                                  // number of maker hops
-    txCount: 1,                                     // number of funding transaction splits
+    txCount: 2,                                     // maximum funding transaction splits per hop
     requiredConfirms: 1,                            // minimum funding confirmations
     manuallySelectedOutpoints: nil,                 // optional explicit wallet UTXOs
-    preferredMakers: nil                            // optional maker addresses to prefer
+    preferredMakers: nil,                           // optional maker addresses to prefer
+    maxInputBudget: 2,                              // inputs per forwarding tx whose fee the taker covers
+    feerate: 1                                      // sats/vB used by every swap transaction
 )
 
 // Prepare the swap first, then start it with the returned swap id.
@@ -145,10 +147,12 @@ let swapParams = SwapParams(
     protocol: protocolHint,                         // optional protocol hint string
     sendAmount: sendAmountSats,                     // total sats to swap
     makerCount: makerCount,                         // number of maker hops
-    txCount: txCount,                               // number of funding transaction splits
+    txCount: txCount,                               // maximum funding transaction splits per hop
     requiredConfirms: requiredConfirms,             // minimum funding confirmations
     manuallySelectedOutpoints: outpoints,           // optional explicit wallet UTXOs
-    preferredMakers: preferredMakers                // optional maker addresses to prefer
+    preferredMakers: preferredMakers,               // optional maker addresses to prefer
+    maxInputBudget: maxInputBudget,                 // inputs per forwarding tx whose fee the taker covers
+    feerate: feerate                                // sats/vB used by every swap transaction
 )
 ```
 

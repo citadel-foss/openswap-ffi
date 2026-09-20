@@ -202,7 +202,9 @@ public class ApiContractTest
             RequiredConfirms: 4,
             ManuallySelectedOutpoints: [outpoint],
             PreferredMakers: ["maker.onion:6102"],
-            PaymentAddress: null);
+            PaymentAddress: null,
+            MaxInputBudget: 5,
+            Feerate: 6);
         Assert.Equal("Taproot", parameters.Protocol);
         Assert.Equal((ulong)500_000, parameters.SendAmount);
         Assert.Equal((uint)2, parameters.MakerCount);
@@ -211,6 +213,8 @@ public class ApiContractTest
         Assert.Equal(outpoint, parameters.ManuallySelectedOutpoints!.Single());
         Assert.Equal("maker.onion:6102", parameters.PreferredMakers!.Single());
         Assert.Null(parameters.PaymentAddress);
+        Assert.Equal((uint?)5, parameters.MaxInputBudget);
+        Assert.Equal((ulong?)6, parameters.Feerate);
 
         var fee = new MakerFeeInfo(1, "maker.onion:6102", 100, 200, 300, 600);
         var change = new UtxoWithAddress(25_000, "bc1qchange");

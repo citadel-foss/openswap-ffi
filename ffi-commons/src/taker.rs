@@ -42,7 +42,7 @@ pub struct SwapParams {
     pub send_amount: u64,
     /// How many hops.
     pub maker_count: u32,
-    /// Number of transaction splits.
+    /// Maximum number of funding transaction splits per hop.
     pub tx_count: Option<u32>,
     /// Required funding confirmations.
     pub required_confirms: Option<u32>,
@@ -53,6 +53,12 @@ pub struct SwapParams {
     /// Optional third-party address that receives the settled swap amount.
     #[uniffi(default = None)]
     pub payment_address: Option<String>,
+    /// Maximum inputs per forwarding transaction whose fee the taker covers.
+    #[uniffi(default = None)]
+    pub max_input_budget: Option<u32>,
+    /// Swap feerate in sats/vB for every transaction in this swap.
+    #[uniffi(default = None)]
+    pub feerate: Option<u64>,
 }
 
 fn checked_satoshi_amount(amount: i64) -> Result<u64, TakerError> {
@@ -132,16 +138,27 @@ impl TryFrom<SwapParams> for OpenswapSwapParams {
             })
             .transpose()?;
 
-        Ok(OpenswapSwapParams {
-            protocol,
-            send_amount,
-            maker_count: params.maker_count as usize,
-            tx_count: params.tx_count.unwrap_or(1),
-            required_confirms: params.required_confirms.unwrap_or(1),
-            manually_selected_outpoints,
-            preferred_makers: params.preferred_makers,
-            payment_address,
-        })
+        // Start from the upstream constructor so omitted FFI options continue to
+        // follow Openswap's policy defaults as that API evolves.
+        let mut openswap_params =
+            OpenswapSwapParams::new(protocol, send_amount, params.maker_count as usize);
+        if let Some(tx_count) = params.tx_count {
+            openswap_params.tx_count = tx_count;
+        }
+        if let Some(max_input_budget) = params.max_input_budget {
+            openswap_params.max_input_budget = max_input_budget;
+        }
+        if let Some(feerate) = params.feerate {
+            openswap_params.feerate = feerate;
+        }
+        if let Some(required_confirms) = params.required_confirms {
+            openswap_params.required_confirms = required_confirms;
+        }
+        openswap_params.manually_selected_outpoints = manually_selected_outpoints;
+        openswap_params.preferred_makers = params.preferred_makers;
+        openswap_params.payment_address = payment_address;
+
+        Ok(openswap_params)
     }
 }
 
@@ -753,6 +770,8 @@ mod contract_tests {
             manually_selected_outpoints: None,
             preferred_makers: None,
             payment_address: None,
+            max_input_budget: None,
+            feerate: None,
         }
     }
 
@@ -797,7 +816,9 @@ mod contract_tests {
         assert!(matches!(defaults.protocol, ProtocolVersion::Legacy));
         assert_eq!(defaults.send_amount, OpenswapAmount::from_sat(50_000));
         assert_eq!(defaults.maker_count, 2);
-        assert_eq!(defaults.tx_count, 1);
+        assert_eq!(defaults.tx_count, 2);
+        assert_eq!(defaults.max_input_budget, 2);
+        assert_eq!(defaults.feerate, 1);
         assert_eq!(defaults.required_confirms, 1);
         assert!(defaults.manually_selected_outpoints.is_none());
         assert!(defaults.preferred_makers.is_none());
@@ -818,12 +839,16 @@ mod contract_tests {
             }]),
             preferred_makers: Some(vec!["maker.example:6102".to_string()]),
             payment_address: Some("1BoatSLRHtKNngkdXEeobR76b53LETtpyT".to_string()),
+            max_input_budget: Some(3),
+            feerate: Some(4),
         })
         .unwrap();
         assert!(matches!(explicit.protocol, ProtocolVersion::Taproot));
         assert_eq!(explicit.send_amount, OpenswapAmount::from_sat(u64::MAX));
         assert_eq!(explicit.maker_count, u32::MAX as usize);
         assert_eq!(explicit.tx_count, 4);
+        assert_eq!(explicit.max_input_budget, 3);
+        assert_eq!(explicit.feerate, 4);
         assert_eq!(explicit.required_confirms, 6);
         assert_eq!(
             explicit.manually_selected_outpoints.unwrap()[0].to_string(),

@@ -271,6 +271,8 @@ class ApiContractTest {
             manuallySelectedOutpoints = listOf(outpoint),
             preferredMakers = listOf("maker.onion:6102"),
             paymentAddress = null,
+            maxInputBudget = 5u,
+            feerate = 6uL,
         )
         assertEquals("Taproot", params.protocol)
         assertEquals(500_000uL, params.sendAmount)
@@ -280,6 +282,8 @@ class ApiContractTest {
         assertEquals(listOf(outpoint), params.manuallySelectedOutpoints)
         assertEquals(listOf("maker.onion:6102"), params.preferredMakers)
         assertNull(params.paymentAddress)
+        assertEquals(5u, params.maxInputBudget)
+        assertEquals(6uL, params.feerate)
 
         val fee = MakerFeeInfo(1u, "maker.onion:6102", 100.0, 200.0, 300.0, 600.0)
         val change = UtxoWithAddress(25_000, "bc1qchange")

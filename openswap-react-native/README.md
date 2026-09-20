@@ -159,7 +159,9 @@ const swapId = await taker.prepareOpenswap({
   protocol: 'Legacy',                        // 'Legacy' | 'Taproot' | null for default
   sendAmount: 1_000_000n,                    // sats to swap (bigint — Rust u64)
   makerCount: 2,                             // number of maker hops
-  txCount: 1,                                // number of funding transaction splits
+  txCount: 2,                                // maximum funding transaction splits per hop
+  maxInputBudget: 2,                         // inputs per forwarding tx whose fee the taker covers
+  feerate: 1n,                               // sats/vB used by every swap transaction
   requiredConfirms: 1,                       // minimum funding confirmations
 })
 
@@ -226,7 +228,9 @@ AddressType.P2TR     // Taproot (bech32m)
   protocol?: string          // 'Legacy' | 'Taproot'; omit for backend default
   sendAmount: bigint         // total sats to swap
   makerCount: number         // number of maker hops
-  txCount?: number           // number of funding transaction splits
+  txCount?: number           // maximum funding transaction splits per hop
+  maxInputBudget?: number    // inputs per forwarding tx whose fee the taker covers
+  feerate?: bigint           // sats/vB used by every swap transaction
   requiredConfirms?: number  // minimum funding confirmations
   preferredMakers?: string[] // optional maker addresses to prefer
 }

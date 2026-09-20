@@ -341,6 +341,8 @@ pub fn run_swap(swap: &Swap, send: u64) {
             manually_selected_outpoints: None,
             preferred_makers: Some(maker_addresses),
             payment_address: None,
+            max_input_budget: None,
+            feerate: None,
         })
         .expect("prepare_openswap");
     let report = taker.start_openswap(swap_id).expect("start_openswap");
