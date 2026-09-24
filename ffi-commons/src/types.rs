@@ -15,14 +15,17 @@ use openswap::{
     taker::{
         error::TakerError as OpenswapTakerError,
         offers::{
-            MakerAddress as csMakerAddress, MakerOfferCandidate as csMakerOfferCandidate,
-            MakerProtocol as csMakerProtocol, MakerState as csMakerState, OfferBook as csOfferBook,
+            BanReason as csBanReason, BanRecord as csBanRecord, MakerAddress as csMakerAddress,
+            MakerOfferCandidate as csMakerOfferCandidate, MakerProtocol as csMakerProtocol,
+            MakerState as csMakerState, OfferBook as csOfferBook,
+            UnavailableReason as csUnavailableReason, UnavailableState as csUnavailableState,
         },
     },
     wallet::{
         AddressType as csAddressType, BackendConfig as OpenswapBackendConfig,
         Balances as OpenswapBalances, CoreRpcConfig as OpenswapCoreRpcConfig,
         ElectrumConfig as OpenswapElectrumConfig, FidelityBond as csFidelityBond,
+        WalletError as OpenswapWalletError,
         ffi::{
             MakerFeeInfo as csMakerFeeInfo, ReportUtxo as csReportUtxo,
             TakerReport as csTakerReport, restore_wallet_gui_app as cs_restore_wallet_gui_app,
@@ -151,15 +154,45 @@ fn apply_if_some<T>(target: &mut T, value: Option<T>) {
 /// and other Taker-specific scenarios.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum TakerError {
+    /// Contract transactions appeared on-chain before the swap completed.
+    #[error("Contracts broadcasted: {txids:?}")]
+    ContractsBroadcasted { txids: Vec<String> },
+    /// The offerbook did not contain enough eligible makers.
+    #[error("Not enough makers in offerbook: {msg}")]
+    NotEnoughMakers { msg: String },
     /// Error related to wallet operations.
     #[error("Wallet error: {msg}")]
     Wallet { msg: String },
+    /// Transactions were proven never to have reached the network.
+    #[error("Transactions never broadcast: {txids:?}")]
+    TransactionsNeverBroadcast { txids: Vec<String> },
+    /// Error while screening funding inputs against a blocklist.
+    #[error("Blocklist error: {msg}")]
+    Blocklist { msg: String },
     /// Protocol error during openswap operations.
     #[error("Protocol error: {msg}")]
     Protocol { msg: String },
     /// Error related to network operations.
     #[error("Network error: {msg}")]
     Network { msg: String },
+    /// The send amount required by the prepared swap was missing.
+    #[error("Send amount not set: {msg}")]
+    SendAmountNotSet { msg: String },
+    /// Serialized taker data could not be decoded.
+    #[error("Deserialize error: {msg}")]
+    Deserialize { msg: String },
+    /// Internal taker channel communication failed.
+    #[error("MPSC error: {msg}")]
+    Mpsc { msg: String },
+    /// Tor setup or communication failed.
+    #[error("Tor error: {msg}")]
+    Tor { msg: String },
+    /// A Bitcoin address could not be parsed.
+    #[error("Address parse error: {msg}")]
+    AddressParse { msg: String },
+    /// The breach watcher failed.
+    #[error("Watcher error: {msg}")]
+    Watcher { msg: String },
     /// General error with a custom message
     #[error("General error: {msg}")]
     General { msg: String },
@@ -171,7 +204,21 @@ pub enum TakerError {
 impl From<OpenswapTakerError> for TakerError {
     fn from(error: OpenswapTakerError) -> Self {
         match error {
+            OpenswapTakerError::ContractsBroadcasted(txids) => TakerError::ContractsBroadcasted {
+                txids: txids.into_iter().map(|txid| txid.to_string()).collect(),
+            },
+            OpenswapTakerError::NotEnoughMakersInOfferBook => TakerError::NotEnoughMakers {
+                msg: "not enough eligible makers".to_string(),
+            },
+            OpenswapTakerError::Wallet(OpenswapWalletError::TxNeverBroadcast(txids)) => {
+                TakerError::TransactionsNeverBroadcast {
+                    txids: txids.into_iter().map(|txid| txid.to_string()).collect(),
+                }
+            }
             OpenswapTakerError::Wallet(error) => TakerError::Wallet {
+                msg: error.to_string(),
+            },
+            OpenswapTakerError::Blocklist(error) => TakerError::Blocklist {
                 msg: error.to_string(),
             },
             OpenswapTakerError::General(msg) => TakerError::General { msg },
@@ -181,8 +228,19 @@ impl From<OpenswapTakerError> for TakerError {
             OpenswapTakerError::Net(error) => TakerError::Network {
                 msg: error.to_string(),
             },
-            _ => TakerError::General {
-                msg: format!("Taker error: {:?}", error),
+            OpenswapTakerError::SendAmountNotSet => TakerError::SendAmountNotSet {
+                msg: "prepared swap has no send amount".to_string(),
+            },
+            OpenswapTakerError::Deserialize(msg) => TakerError::Deserialize { msg },
+            OpenswapTakerError::MPSC(msg) => TakerError::Mpsc { msg },
+            OpenswapTakerError::TorError(error) => TakerError::Tor {
+                msg: format!("{error:?}"),
+            },
+            OpenswapTakerError::AddressParseError(error) => TakerError::AddressParse {
+                msg: error.to_string(),
+            },
+            OpenswapTakerError::Watcher(error) => TakerError::Watcher {
+                msg: error.to_string(),
             },
         }
     }
@@ -523,10 +581,70 @@ impl From<csMakerAddress> for MakerAddress {
 /// Represents the Maker connection state
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct MakerState {
-    /// State type: "Good", "Unresponsive", or "Bad"
+    /// State type: "Good", "Unavailable", or "Banned".
     pub state_type: String,
-    /// Number of retries (only for Unresponsive state). We allow only 10 retries before marking a maker as bad.
-    pub retries: Option<u8>,
+    /// Recovery details when state_type is "Unavailable".
+    pub unavailable: Option<UnavailableState>,
+    /// Permanent ban details when state_type is "Banned".
+    pub ban: Option<BanRecord>,
+}
+
+/// Details for a maker that is temporarily unavailable.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct UnavailableState {
+    /// One of the documented UnavailableReason variant names.
+    pub reason: String,
+    /// Start of the unbroken failure run, as Unix seconds.
+    pub since_ts: Option<u64>,
+    /// Most recent attempt, as Unix seconds.
+    pub last_attempt_ts: Option<u64>,
+    /// Number of failures in the current run.
+    pub attempts: u32,
+}
+
+impl From<csUnavailableState> for UnavailableState {
+    fn from(state: csUnavailableState) -> Self {
+        Self {
+            reason: match state.reason {
+                csUnavailableReason::AwaitingOffer => "AwaitingOffer",
+                csUnavailableReason::NoOfferResponse => "NoOfferResponse",
+                csUnavailableReason::BondUnconfirmed => "BondUnconfirmed",
+                csUnavailableReason::BondExpired => "BondExpired",
+                csUnavailableReason::BondReorged => "BondReorged",
+                csUnavailableReason::BondUnverified => "BondUnverified",
+                csUnavailableReason::UnpriceableOffer => "UnpriceableOffer",
+                csUnavailableReason::LegacyStatus => "LegacyStatus",
+            }
+            .to_string(),
+            since_ts: state.since_ts,
+            last_attempt_ts: state.last_attempt_ts,
+            attempts: state.attempts,
+        }
+    }
+}
+
+/// Details for a maker that is permanently banned until explicitly removed.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct BanRecord {
+    /// One of the documented BanReason variant names.
+    pub reason: String,
+    /// Time the ban was first recorded, as Unix seconds.
+    pub recorded_at_ts: u64,
+}
+
+impl From<csBanRecord> for BanRecord {
+    fn from(record: csBanRecord) -> Self {
+        Self {
+            reason: match record.reason {
+                csBanReason::ProvenViolation => "ProvenViolation",
+                csBanReason::InvalidFidelityProof => "InvalidFidelityProof",
+                csBanReason::FundingWithheld => "FundingWithheld",
+                csBanReason::LegacyProvenViolation => "LegacyProvenViolation",
+            }
+            .to_string(),
+            recorded_at_ts: record.recorded_at_ts,
+        }
+    }
 }
 
 impl From<csMakerState> for MakerState {
@@ -534,15 +652,18 @@ impl From<csMakerState> for MakerState {
         match state {
             csMakerState::Good => MakerState {
                 state_type: "Good".to_string(),
-                retries: None,
+                unavailable: None,
+                ban: None,
             },
-            csMakerState::Unresponsive { retries } => MakerState {
-                state_type: "Unresponsive".to_string(),
-                retries: Some(retries),
+            csMakerState::Unavailable(unavailable) => MakerState {
+                state_type: "Unavailable".to_string(),
+                unavailable: Some(unavailable.into()),
+                ban: None,
             },
-            csMakerState::Bad => MakerState {
-                state_type: "Bad".to_string(),
-                retries: None,
+            csMakerState::Banned(ban) => MakerState {
+                state_type: "Banned".to_string(),
+                unavailable: None,
+                ban: Some(ban.into()),
             },
         }
     }
@@ -941,7 +1062,10 @@ mod contract_tests {
         },
         error::NetError,
         taker::error::TakerError as OpenswapTakerError,
-        taker::offers::{MakerProtocol as OpenswapMakerProtocol, MakerState as OpenswapMakerState},
+        taker::offers::{
+            BanReason, BanRecord, MakerProtocol as OpenswapMakerProtocol,
+            MakerState as OpenswapMakerState, UnavailableReason, UnavailableState,
+        },
         wallet::{
             AddressType as OpenswapAddressType, BackendConfig as OpenswapBackendConfig,
             WalletError as OpenswapWalletError,
@@ -1112,15 +1236,32 @@ mod contract_tests {
     fn maker_state_and_protocol_variants_keep_their_ffi_discriminants() {
         let good = MakerState::from(OpenswapMakerState::Good);
         assert_eq!(good.state_type, "Good");
-        assert_eq!(good.retries, None);
+        assert!(good.unavailable.is_none());
+        assert!(good.ban.is_none());
 
-        let unresponsive = MakerState::from(OpenswapMakerState::Unresponsive { retries: 7 });
-        assert_eq!(unresponsive.state_type, "Unresponsive");
-        assert_eq!(unresponsive.retries, Some(7));
+        let unavailable = MakerState::from(OpenswapMakerState::Unavailable(UnavailableState {
+            reason: UnavailableReason::NoOfferResponse,
+            since_ts: Some(100),
+            last_attempt_ts: Some(200),
+            attempts: 7,
+        }));
+        assert_eq!(unavailable.state_type, "Unavailable");
+        let details = unavailable.unavailable.expect("unavailable details");
+        assert_eq!(details.reason, "NoOfferResponse");
+        assert_eq!(details.since_ts, Some(100));
+        assert_eq!(details.last_attempt_ts, Some(200));
+        assert_eq!(details.attempts, 7);
+        assert!(unavailable.ban.is_none());
 
-        let bad = MakerState::from(OpenswapMakerState::Bad);
-        assert_eq!(bad.state_type, "Bad");
-        assert_eq!(bad.retries, None);
+        let banned = MakerState::from(OpenswapMakerState::Banned(BanRecord {
+            reason: BanReason::ProvenViolation,
+            recorded_at_ts: 300,
+        }));
+        assert_eq!(banned.state_type, "Banned");
+        assert!(banned.unavailable.is_none());
+        let ban = banned.ban.expect("ban details");
+        assert_eq!(ban.reason, "ProvenViolation");
+        assert_eq!(ban.recorded_at_ts, 300);
 
         for (input, expected) in [
             (OpenswapMakerProtocol::Legacy, "Legacy"),
@@ -1168,10 +1309,34 @@ mod contract_tests {
     fn taker_error_variants_preserve_their_category_and_message() {
         let errors = [
             (
+                TakerError::ContractsBroadcasted {
+                    txids: vec!["contract".into()],
+                },
+                "Contracts broadcasted: [\"contract\"]",
+            ),
+            (
+                TakerError::NotEnoughMakers {
+                    msg: "makers".into(),
+                },
+                "Not enough makers in offerbook: makers",
+            ),
+            (
                 TakerError::Wallet {
                     msg: "wallet".into(),
                 },
                 "Wallet error: wallet",
+            ),
+            (
+                TakerError::TransactionsNeverBroadcast {
+                    txids: vec!["withheld".into()],
+                },
+                "Transactions never broadcast: [\"withheld\"]",
+            ),
+            (
+                TakerError::Blocklist {
+                    msg: "blocked".into(),
+                },
+                "Blocklist error: blocked",
             ),
             (
                 TakerError::Protocol {
@@ -1184,6 +1349,37 @@ mod contract_tests {
                     msg: "network".into(),
                 },
                 "Network error: network",
+            ),
+            (
+                TakerError::SendAmountNotSet {
+                    msg: "amount".into(),
+                },
+                "Send amount not set: amount",
+            ),
+            (
+                TakerError::Deserialize {
+                    msg: "decode".into(),
+                },
+                "Deserialize error: decode",
+            ),
+            (
+                TakerError::Mpsc {
+                    msg: "channel".into(),
+                },
+                "MPSC error: channel",
+            ),
+            (TakerError::Tor { msg: "tor".into() }, "Tor error: tor"),
+            (
+                TakerError::AddressParse {
+                    msg: "address".into(),
+                },
+                "Address parse error: address",
+            ),
+            (
+                TakerError::Watcher {
+                    msg: "watcher".into(),
+                },
+                "Watcher error: watcher",
             ),
             (
                 TakerError::General {
@@ -1213,6 +1409,21 @@ mod contract_tests {
         assert!(matches!(
             network_error,
             TakerError::Network { msg } if msg == "ConnectionTimedOut"
+        ));
+
+        let txid = OpenswapTxid::from_str(&"cd".repeat(32)).unwrap();
+        let never_broadcast = TakerError::from(OpenswapTakerError::Wallet(
+            OpenswapWalletError::TxNeverBroadcast(vec![txid]),
+        ));
+        assert!(matches!(
+            never_broadcast,
+            TakerError::TransactionsNeverBroadcast { txids }
+                if txids == vec!["cd".repeat(32)]
+        ));
+
+        assert!(matches!(
+            TakerError::from(OpenswapTakerError::NotEnoughMakersInOfferBook),
+            TakerError::NotEnoughMakers { msg } if msg == "not enough eligible makers"
         ));
     }
 

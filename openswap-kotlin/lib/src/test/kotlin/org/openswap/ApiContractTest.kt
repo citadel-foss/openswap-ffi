@@ -160,9 +160,16 @@ class ApiContractTest {
         assertEquals("Blocks", LockTime("Blocks", 144u).lockType)
         assertEquals(144u, LockTime("Blocks", 144u).value)
         assertEquals("maker.onion:6102", MakerAddress("maker.onion:6102").address)
-        val makerState = MakerState("Unresponsive", 7u.toUByte())
-        assertEquals("Unresponsive", makerState.stateType)
-        assertEquals(7u.toUByte(), makerState.retries)
+        val unavailable = UnavailableState("NoOfferResponse", 100uL, 200uL, 7u)
+        val makerState = MakerState("Unavailable", unavailable, null)
+        assertEquals("Unavailable", makerState.stateType)
+        assertEquals("NoOfferResponse", makerState.unavailable?.reason)
+        assertEquals(100uL, makerState.unavailable?.sinceTs)
+        assertEquals(200uL, makerState.unavailable?.lastAttemptTs)
+        assertEquals(7u, makerState.unavailable?.attempts)
+        val banned = MakerState("Banned", null, BanRecord("InvalidFidelityProof", 300uL))
+        assertEquals("InvalidFidelityProof", banned.ban?.reason)
+        assertEquals(300uL, banned.ban?.recordedAtTs)
         assertEquals("Unified", MakerProtocol("Unified").protocolType)
         val change = UtxoWithAddress(50_000, "bc1qchange")
         assertEquals(50_000L, change.amount)
@@ -254,7 +261,7 @@ class ApiContractTest {
         val candidate = MakerOfferCandidate(
             address = MakerAddress("maker.onion:6102"),
             offer = offer,
-            state = MakerState("Good", null),
+            state = MakerState("Good", null, null),
             protocol = MakerProtocol("Taproot"),
         )
         val offerBook = OfferBook(listOf(candidate))
