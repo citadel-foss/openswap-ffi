@@ -152,9 +152,17 @@ public class ApiContractTest
         Assert.Equal("Blocks", lockTime.LockType);
         Assert.Equal((uint)144, lockTime.Value);
         Assert.Equal("maker.onion:6102", new MakerAddress("maker.onion:6102").Address);
-        var makerState = new MakerState("Unresponsive", 7);
-        Assert.Equal("Unresponsive", makerState.StateType);
-        Assert.Equal((byte?)7, makerState.Retries);
+        var unavailable = new UnavailableState("NoOfferResponse", 100, 200, 7);
+        var makerState = new MakerState("Unavailable", unavailable, null);
+        Assert.Equal("Unavailable", makerState.StateType);
+        Assert.Equal("NoOfferResponse", makerState.Unavailable?.Reason);
+        Assert.Equal((ulong?)100, makerState.Unavailable?.SinceTs);
+        Assert.Equal((ulong?)200, makerState.Unavailable?.LastAttemptTs);
+        Assert.Equal((uint?)7, makerState.Unavailable?.Attempts);
+        var banned = new MakerState(
+            "Banned", null, new BanRecord("InvalidFidelityProof", 300));
+        Assert.Equal("InvalidFidelityProof", banned.Ban?.Reason);
+        Assert.Equal((ulong?)300, banned.Ban?.RecordedAtTs);
         Assert.Equal("Unified", new MakerProtocol("Unified").ProtocolType);
     }
 
@@ -189,7 +197,7 @@ public class ApiContractTest
         var candidate = new MakerOfferCandidate(
             Address: new MakerAddress("maker.onion:6102"),
             Offer: offer,
-            State: new MakerState("Good", null),
+            State: new MakerState("Good", null, null),
             Protocol: new MakerProtocol("Taproot"));
         Assert.Equal(candidate, new OfferBook([candidate]).Makers.Single());
         Assert.Equal(Enumerable.Repeat((byte)6, 64), candidate.Offer!.Fidelity.CertSig);

@@ -180,7 +180,22 @@ class ApiContractTest(unittest.TestCase):
         )
         self.assert_record(openswap.LockTime(lock_type="Blocks", value=144), lock_type="Blocks", value=144)
         self.assert_record(openswap.MakerAddress(address="maker.onion:6102"), address="maker.onion:6102")
-        self.assert_record(openswap.MakerState(state_type="Unresponsive", retries=7), state_type="Unresponsive", retries=7)
+        unavailable = openswap.UnavailableState(
+            reason="NoOfferResponse", since_ts=100, last_attempt_ts=200, attempts=7
+        )
+        self.assert_record(
+            openswap.MakerState(state_type="Unavailable", unavailable=unavailable, ban=None),
+            state_type="Unavailable",
+            unavailable=unavailable,
+            ban=None,
+        )
+        ban = openswap.BanRecord(reason="InvalidFidelityProof", recorded_at_ts=300)
+        self.assert_record(
+            openswap.MakerState(state_type="Banned", unavailable=None, ban=ban),
+            state_type="Banned",
+            unavailable=None,
+            ban=ban,
+        )
         self.assert_record(openswap.MakerProtocol(protocol_type="Unified"), protocol_type="Unified")
         self.assert_record(openswap.UtxoWithAddress(amount=50_000, address="bc1qchange"), amount=50_000, address="bc1qchange")
 
@@ -279,7 +294,7 @@ class ApiContractTest(unittest.TestCase):
         candidate = openswap.MakerOfferCandidate(
             address=openswap.MakerAddress(address="maker.onion:6102"),
             offer=offer,
-            state=openswap.MakerState(state_type="Good", retries=None),
+            state=openswap.MakerState(state_type="Good", unavailable=None, ban=None),
             protocol=openswap.MakerProtocol(protocol_type="Taproot"),
         )
         self.assert_record(openswap.OfferBook(makers=[candidate]), makers=[candidate])
@@ -361,13 +376,29 @@ class ApiContractTest(unittest.TestCase):
             ],
         )
         for error_type in (
+            openswap.TakerError.NotEnoughMakers,
             openswap.TakerError.Wallet,
             openswap.TakerError.Protocol,
             openswap.TakerError.Network,
+            openswap.TakerError.Blocklist,
+            openswap.TakerError.SendAmountNotSet,
+            openswap.TakerError.Deserialize,
+            openswap.TakerError.Mpsc,
+            openswap.TakerError.Tor,
+            openswap.TakerError.AddressParse,
+            openswap.TakerError.Watcher,
             openswap.TakerError.General,
             openswap.TakerError.Io,
         ):
             self.assertEqual(error_type("reason").msg, "reason")
+        self.assertEqual(
+            openswap.TakerError.ContractsBroadcasted(["contract"]).txids,
+            ["contract"],
+        )
+        self.assertEqual(
+            openswap.TakerError.TransactionsNeverBroadcast(["withheld"]).txids,
+            ["withheld"],
+        )
 
 
 if __name__ == "__main__":

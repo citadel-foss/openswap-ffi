@@ -129,9 +129,20 @@ final class ApiContractTests: XCTestCase {
         XCTAssertEqual(lockTime.value, 144)
         XCTAssertEqual(MakerAddress(address: "maker.onion:6102").address,
                        "maker.onion:6102")
-        let makerState = MakerState(stateType: "Unresponsive", retries: 7)
-        XCTAssertEqual(makerState.stateType, "Unresponsive")
-        XCTAssertEqual(makerState.retries, 7)
+        let unavailable = UnavailableState(
+            reason: "NoOfferResponse", sinceTs: 100, lastAttemptTs: 200, attempts: 7)
+        let makerState = MakerState(
+            stateType: "Unavailable", unavailable: unavailable, ban: nil)
+        XCTAssertEqual(makerState.stateType, "Unavailable")
+        XCTAssertEqual(makerState.unavailable?.reason, "NoOfferResponse")
+        XCTAssertEqual(makerState.unavailable?.sinceTs, 100)
+        XCTAssertEqual(makerState.unavailable?.lastAttemptTs, 200)
+        XCTAssertEqual(makerState.unavailable?.attempts, 7)
+        let banned = MakerState(
+            stateType: "Banned", unavailable: nil,
+            ban: BanRecord(reason: "InvalidFidelityProof", recordedAtTs: 300))
+        XCTAssertEqual(banned.ban?.reason, "InvalidFidelityProof")
+        XCTAssertEqual(banned.ban?.recordedAtTs, 300)
         XCTAssertEqual(MakerProtocol(protocolType: "Unified").protocolType, "Unified")
     }
 
@@ -164,7 +175,7 @@ final class ApiContractTests: XCTestCase {
         let candidate = MakerOfferCandidate(
             address: MakerAddress(address: "maker.onion:6102"),
             offer: offer,
-            state: MakerState(stateType: "Good", retries: nil),
+            state: MakerState(stateType: "Good", unavailable: nil, ban: nil),
             protocol: MakerProtocol(protocolType: "Taproot"))
         XCTAssertEqual(OfferBook(makers: [candidate]).makers, [candidate])
         XCTAssertEqual(candidate.offer?.fidelity.certSig, Data(repeating: 6, count: 64))
@@ -249,12 +260,22 @@ final class ApiContractTests: XCTestCase {
         XCTAssertEqual(behaviors.count, 3)
 
         let errors: Set<TakerError> = [
+            .ContractsBroadcasted(txids: ["contract"]),
+            .NotEnoughMakers(msg: "reason"),
             .Wallet(msg: "reason"),
+            .TransactionsNeverBroadcast(txids: ["withheld"]),
+            .Blocklist(msg: "reason"),
             .Protocol(msg: "reason"),
             .Network(msg: "reason"),
+            .SendAmountNotSet(msg: "reason"),
+            .Deserialize(msg: "reason"),
+            .Mpsc(msg: "reason"),
+            .Tor(msg: "reason"),
+            .AddressParse(msg: "reason"),
+            .Watcher(msg: "reason"),
             .General(msg: "reason"),
             .Io(msg: "reason"),
         ]
-        XCTAssertEqual(errors.count, 5)
+        XCTAssertEqual(errors.count, 15)
     }
 }

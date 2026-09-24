@@ -104,8 +104,20 @@ class ApiContractTest < Minitest::Test
     assert_equal [12.5, 6.25, 1.0], [fee_rates.fastest, fee_rates.standard, fee_rates.economy]
     lock_time = Openswap::LockTime.new(lock_type: 'Blocks', value: 144)
     assert_equal ['Blocks', 144], [lock_time.lock_type, lock_time.value]
-    maker_state = Openswap::MakerState.new(state_type: 'Unresponsive', retries: 7)
-    assert_equal ['Unresponsive', 7], [maker_state.state_type, maker_state.retries]
+    unavailable = Openswap::UnavailableState.new(
+      reason: 'NoOfferResponse', since_ts: 100, last_attempt_ts: 200, attempts: 7
+    )
+    maker_state = Openswap::MakerState.new(
+      state_type: 'Unavailable', unavailable: unavailable, ban: nil
+    )
+    assert_equal ['Unavailable', 'NoOfferResponse', 100, 200, 7],
+                 [maker_state.state_type, maker_state.unavailable.reason,
+                  maker_state.unavailable.since_ts, maker_state.unavailable.last_attempt_ts,
+                  maker_state.unavailable.attempts]
+    ban = Openswap::BanRecord.new(reason: 'InvalidFidelityProof', recorded_at_ts: 300)
+    banned = Openswap::MakerState.new(state_type: 'Banned', unavailable: nil, ban: ban)
+    assert_equal ['Banned', 'InvalidFidelityProof', 300],
+                 [banned.state_type, banned.ban.reason, banned.ban.recorded_at_ts]
     assert_equal 'Unified', Openswap::MakerProtocol.new(protocol_type: 'Unified').protocol_type
   end
 
@@ -127,7 +139,8 @@ class ApiContractTest < Minitest::Test
     )
     candidate = Openswap::MakerOfferCandidate.new(
       address: Openswap::MakerAddress.new(address: 'maker.onion:6102'),
-      offer: offer, state: Openswap::MakerState.new(state_type: 'Good', retries: nil),
+      offer: offer,
+      state: Openswap::MakerState.new(state_type: 'Good', unavailable: nil, ban: nil),
       protocol: Openswap::MakerProtocol.new(protocol_type: 'Taproot')
     )
     assert_equal candidate, Openswap::OfferBook.new(makers: [candidate]).makers.first
@@ -195,13 +208,25 @@ class ApiContractTest < Minitest::Test
       Openswap::TakerBehavior::BROADCAST_CONTRACT_AFTER_FULL_SETUP
     ]
     errors = [
+      Openswap::TakerError::NotEnoughMakers,
       Openswap::TakerError::Wallet,
       Openswap::TakerError::Protocol,
       Openswap::TakerError::Network,
+      Openswap::TakerError::Blocklist,
+      Openswap::TakerError::SendAmountNotSet,
+      Openswap::TakerError::Deserialize,
+      Openswap::TakerError::Mpsc,
+      Openswap::TakerError::Tor,
+      Openswap::TakerError::AddressParse,
+      Openswap::TakerError::Watcher,
       Openswap::TakerError::General,
       Openswap::TakerError::Io
     ]
     errors.each { |error| assert_equal 'reason', error.new('reason').msg }
+    assert_equal ['contract'],
+                 Openswap::TakerError::ContractsBroadcasted.new(['contract']).txids
+    assert_equal ['withheld'],
+                 Openswap::TakerError::TransactionsNeverBroadcast.new(['withheld']).txids
 
     expected_methods = %i[
       backup display_offer fetch_all_makers fetch_offers get_balances

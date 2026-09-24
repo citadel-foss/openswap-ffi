@@ -12,8 +12,10 @@ use openswap::{
   bitcoind::bitcoincore_rpc::Auth,
   protocol::common_messages::{FidelityProof as csFidelityProof, Offer as csOffer},
   taker::offers::{
-    MakerAddress as csMakerAddress, MakerOfferCandidate as csMakerOfferCandidate,
-    MakerProtocol as csMakerProtocol, MakerState as csMakerState, OfferBook as csOfferBook,
+    BanReason as csBanReason, BanRecord as csBanRecord, MakerAddress as csMakerAddress,
+    MakerOfferCandidate as csMakerOfferCandidate, MakerProtocol as csMakerProtocol,
+    MakerState as csMakerState, OfferBook as csOfferBook, UnavailableReason as csUnavailableReason,
+    UnavailableState as csUnavailableState,
   },
   wallet::{
     ffi::{
@@ -468,10 +470,74 @@ impl From<csMakerAddress> for MakerAddress {
 #[napi(object)]
 #[derive(Debug, Clone)]
 pub struct MakerState {
-  /// State type: "Good", "Unresponsive", or "Bad"
+  /// State type: "Good", "Unavailable", or "Banned".
   pub state_type: String,
-  /// Number of retries (only for Unresponsive state)
-  pub retries: Option<u8>,
+  /// Recovery details when state_type is "Unavailable".
+  pub unavailable: Option<UnavailableState>,
+  /// Permanent ban details when state_type is "Banned".
+  pub ban: Option<BanRecord>,
+}
+
+#[napi(object)]
+#[derive(Debug, Clone)]
+pub struct UnavailableState {
+  /// One of the documented UnavailableReason variant names.
+  pub reason: String,
+  /// Start of the unbroken failure run, as Unix seconds.
+  pub since_ts: Option<i64>,
+  /// Most recent attempt, as Unix seconds.
+  pub last_attempt_ts: Option<i64>,
+  /// Number of failures in the current run.
+  pub attempts: u32,
+}
+
+impl From<csUnavailableState> for UnavailableState {
+  fn from(state: csUnavailableState) -> Self {
+    Self {
+      reason: match state.reason {
+        csUnavailableReason::AwaitingOffer => "AwaitingOffer",
+        csUnavailableReason::NoOfferResponse => "NoOfferResponse",
+        csUnavailableReason::BondUnconfirmed => "BondUnconfirmed",
+        csUnavailableReason::BondExpired => "BondExpired",
+        csUnavailableReason::BondReorged => "BondReorged",
+        csUnavailableReason::BondUnverified => "BondUnverified",
+        csUnavailableReason::UnpriceableOffer => "UnpriceableOffer",
+        csUnavailableReason::LegacyStatus => "LegacyStatus",
+      }
+      .to_string(),
+      since_ts: state
+        .since_ts
+        .map(|timestamp| i64::try_from(timestamp).unwrap_or(i64::MAX)),
+      last_attempt_ts: state
+        .last_attempt_ts
+        .map(|timestamp| i64::try_from(timestamp).unwrap_or(i64::MAX)),
+      attempts: state.attempts,
+    }
+  }
+}
+
+#[napi(object)]
+#[derive(Debug, Clone)]
+pub struct BanRecord {
+  /// One of the documented BanReason variant names.
+  pub reason: String,
+  /// Time the ban was first recorded, as Unix seconds.
+  pub recorded_at_ts: i64,
+}
+
+impl From<csBanRecord> for BanRecord {
+  fn from(record: csBanRecord) -> Self {
+    Self {
+      reason: match record.reason {
+        csBanReason::ProvenViolation => "ProvenViolation",
+        csBanReason::InvalidFidelityProof => "InvalidFidelityProof",
+        csBanReason::FundingWithheld => "FundingWithheld",
+        csBanReason::LegacyProvenViolation => "LegacyProvenViolation",
+      }
+      .to_string(),
+      recorded_at_ts: i64::try_from(record.recorded_at_ts).unwrap_or(i64::MAX),
+    }
+  }
 }
 
 impl From<csMakerState> for MakerState {
@@ -479,15 +545,18 @@ impl From<csMakerState> for MakerState {
     match state {
       csMakerState::Good => MakerState {
         state_type: "Good".to_string(),
-        retries: None,
+        unavailable: None,
+        ban: None,
       },
-      csMakerState::Unresponsive { retries } => MakerState {
-        state_type: "Unresponsive".to_string(),
-        retries: Some(retries),
+      csMakerState::Unavailable(unavailable) => MakerState {
+        state_type: "Unavailable".to_string(),
+        unavailable: Some(unavailable.into()),
+        ban: None,
       },
-      csMakerState::Bad => MakerState {
-        state_type: "Bad".to_string(),
-        retries: None,
+      csMakerState::Banned(ban) => MakerState {
+        state_type: "Banned".to_string(),
+        unavailable: None,
+        ban: Some(ban.into()),
       },
     }
   }
@@ -749,6 +818,7 @@ pub struct WalletBackup {
 mod contract_tests {
   use super::*;
   use openswap::bitcoin::absolute::{Height, Time};
+  use openswap::taker::{BanReason, BanRecord, UnavailableReason, UnavailableState};
 
   fn backend(kind: &str) -> BackendConfig {
     BackendConfig {
@@ -886,14 +956,32 @@ mod contract_tests {
   fn maker_state_and_protocol_conversion_cover_every_variant() {
     let states = [
       MakerState::from(csMakerState::Good),
-      MakerState::from(csMakerState::Unresponsive { retries: 7 }),
-      MakerState::from(csMakerState::Bad),
+      MakerState::from(csMakerState::Unavailable(UnavailableState {
+        reason: UnavailableReason::NoOfferResponse,
+        since_ts: Some(100),
+        last_attempt_ts: Some(200),
+        attempts: 7,
+      })),
+      MakerState::from(csMakerState::Banned(BanRecord {
+        reason: BanReason::ProvenViolation,
+        recorded_at_ts: 300,
+      })),
     ];
     assert_eq!(states[0].state_type, "Good");
-    assert_eq!(states[0].retries, None);
-    assert_eq!(states[1].state_type, "Unresponsive");
-    assert_eq!(states[1].retries, Some(7));
-    assert_eq!(states[2].state_type, "Bad");
+    assert!(states[0].unavailable.is_none());
+    assert!(states[0].ban.is_none());
+    assert_eq!(states[1].state_type, "Unavailable");
+    let unavailable = states[1].unavailable.as_ref().unwrap();
+    assert_eq!(unavailable.reason, "NoOfferResponse");
+    assert_eq!(unavailable.since_ts, Some(100));
+    assert_eq!(unavailable.last_attempt_ts, Some(200));
+    assert_eq!(unavailable.attempts, 7);
+    assert!(states[1].ban.is_none());
+    assert_eq!(states[2].state_type, "Banned");
+    assert!(states[2].unavailable.is_none());
+    let ban = states[2].ban.as_ref().unwrap();
+    assert_eq!(ban.reason, "ProvenViolation");
+    assert_eq!(ban.recorded_at_ts, 300);
 
     assert_eq!(
       MakerProtocol::from(csMakerProtocol::Legacy).protocol_type,

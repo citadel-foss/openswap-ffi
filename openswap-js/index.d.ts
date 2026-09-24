@@ -170,10 +170,30 @@ export interface MakerProtocol {
 }
 
 export interface MakerState {
-  /** State type: "Good", "Unresponsive", or "Bad" */
+  /** State type: "Good", "Unavailable", or "Banned" */
   stateType: string
-  /** Number of retries (only for Unresponsive state) */
-  retries?: number
+  /** Recovery details when stateType is "Unavailable" */
+  unavailable?: UnavailableState
+  /** Permanent ban details when stateType is "Banned" */
+  ban?: BanRecord
+}
+
+export interface UnavailableState {
+  /** One of the documented UnavailableReason variant names */
+  reason: string
+  /** Start of the unbroken failure run, as Unix seconds */
+  sinceTs?: number
+  /** Most recent attempt, as Unix seconds */
+  lastAttemptTs?: number
+  /** Number of failures in the current run */
+  attempts: number
+}
+
+export interface BanRecord {
+  /** One of the documented BanReason variant names */
+  reason: string
+  /** Time the ban was first recorded, as Unix seconds */
+  recordedAtTs: number
 }
 
 export interface Offer {
