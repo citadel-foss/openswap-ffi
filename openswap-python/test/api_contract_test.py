@@ -30,7 +30,6 @@ class ApiContractTest(unittest.TestCase):
     def test_exported_callables_are_complete(self):
         globals_ = {
             "create_default_rpc_config",
-            "fetch_mempool_fees",
             "is_wallet_encrypted",
             "openswap_ffi_version",
             "restore_wallet_gui_app",
@@ -171,12 +170,6 @@ class ApiContractTest(unittest.TestCase):
             contract=3,
             fidelity=4,
             spendable=3,
-        )
-        self.assert_record(
-            openswap.FeeRates(fastest=12.5, standard=6.25, economy=1.0),
-            fastest=12.5,
-            standard=6.25,
-            economy=1.0,
         )
         self.assert_record(openswap.LockTime(lock_type="Blocks", value=144), lock_type="Blocks", value=144)
         self.assert_record(openswap.MakerAddress(address="maker.onion:6102"), address="maker.onion:6102")

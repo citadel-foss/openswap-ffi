@@ -3,7 +3,7 @@
 //! This module provides N-API bindings for the openswap taker functionality.
 
 use crate::types::{
-  Address, AddressType, Amount, BackendConfig, Balances, FeeRates, GetTransactionResultDetail,
+  Address, AddressType, Amount, BackendConfig, Balances, GetTransactionResultDetail,
   ListTransactionResult, ListUnspentResultEntry, MakerOfferCandidate, Offer, OfferBook, OutPoint,
   RPCConfig as RpcConfig, ScriptBuf, SignedAmountSats, SwapReport, Txid, UtxoSpendInfo,
   WalletTxInfo,
@@ -15,7 +15,6 @@ use openswap::{
     address::NetworkUnchecked, Address as BitcoinAddress, Amount as csAmount,
     OutPoint as BitcoinOutPoint, Txid as csTxid,
   },
-  fee_estimation::{BlockTarget, FeeEstimator},
   protocol::ProtocolVersion,
   taker::{
     api::{
@@ -368,33 +367,6 @@ impl Taker {
     // This makes ALL log:: macros from any crate go to the JS console
     console_log::init_with_level(log::Level::Trace).expect("Failed to initialize console_log");
     log::info!("Rust logging → Electron console is ready!");
-  }
-
-  /// Fetch fee estimates from Mempool.space API with automatic fallback to Esplora
-  #[napi]
-  pub fn fetch_mempool_fees() -> Result<FeeRates> {
-    // mempool.space serves live data and is recommended for user facing apps over esplora, the latter serving historical(mov_avg)+live
-    let fees = FeeEstimator::fetch_mempool_fees()
-      .or_else(|mempool_err| {
-        log::warn!(
-          "Mempool.space API failed: {:?}, falling back to Esplora",
-          mempool_err
-        );
-        FeeEstimator::fetch_esplora_fees()
-      })
-      .map_err(|e| napi::Error::from_reason(format!("Both fee APIs failed: {:?}", e)))?;
-
-    let get = |target| {
-      fees
-        .get(&target)
-        .ok_or_else(|| napi::Error::from_reason(format!("Missing fee for {:?}", target)))
-    };
-
-    Ok(FeeRates {
-      fastest: *get(BlockTarget::Fastest)?,
-      standard: *get(BlockTarget::Standard)?,
-      economy: *get(BlockTarget::Economy)?,
-    })
   }
 
   #[napi]

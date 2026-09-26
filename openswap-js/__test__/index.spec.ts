@@ -46,7 +46,6 @@ test('Taker exposes every documented static and instance method', (t) => {
     .sort()
 
   t.deepEqual(staticMethods, [
-    'fetchMempoolFees',
     'initNativeLogging',
     'isWalletEncrypted',
     'restoreWalletGuiApp',

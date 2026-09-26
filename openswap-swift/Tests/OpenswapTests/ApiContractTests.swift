@@ -121,9 +121,6 @@ final class ApiContractTests: XCTestCase {
             [balances.regular, balances.swap, balances.contract,
              balances.fidelity, balances.spendable],
             [1, 2, 3, 4, 3])
-        let feeRates = FeeRates(fastest: 12.5, standard: 6.25, economy: 1.0)
-        XCTAssertEqual([feeRates.fastest, feeRates.standard, feeRates.economy],
-                       [12.5, 6.25, 1.0])
         let lockTime = LockTime(lockType: "Blocks", value: 144)
         XCTAssertEqual(lockTime.lockType, "Blocks")
         XCTAssertEqual(lockTime.value, 144)
