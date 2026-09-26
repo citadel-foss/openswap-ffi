@@ -100,8 +100,6 @@ class ApiContractTest < Minitest::Test
     balances = Openswap::Balances.new(regular: 1, swap: 2, contract: 3, fidelity: 4, spendable: 3)
     assert_equal [1, 2, 3, 4, 3],
                  [balances.regular, balances.swap, balances.contract, balances.fidelity, balances.spendable]
-    fee_rates = Openswap::FeeRates.new(fastest: 12.5, standard: 6.25, economy: 1.0)
-    assert_equal [12.5, 6.25, 1.0], [fee_rates.fastest, fee_rates.standard, fee_rates.economy]
     lock_time = Openswap::LockTime.new(lock_type: 'Blocks', value: 144)
     assert_equal ['Blocks', 144], [lock_time.lock_type, lock_time.value]
     unavailable = Openswap::UnavailableState.new(
@@ -197,7 +195,7 @@ class ApiContractTest < Minitest::Test
 
   def test_enum_error_and_taker_method_surfaces_are_complete
     expected_globals = %i[
-      create_default_rpc_config fetch_mempool_fees is_wallet_encrypted
+      create_default_rpc_config is_wallet_encrypted
       openswap_ffi_version restore_wallet_gui_app setup_logging
     ]
     assert_empty expected_globals - Openswap.methods

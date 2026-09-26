@@ -47,7 +47,6 @@ class ApiContractTest {
 
         val expectedGlobals = setOf(
             "createDefaultRpcConfig",
-            "fetchMempoolFees",
             "isWalletEncrypted",
             "openswapFfiVersion",
             "restoreWalletGuiApp",
@@ -150,12 +149,6 @@ class ApiContractTest {
             balances.contract,
             balances.fidelity,
             balances.spendable,
-        ))
-        val feeRates = FeeRates(12.5, 6.25, 1.0)
-        assertEquals(listOf(12.5, 6.25, 1.0), listOf(
-            feeRates.fastest,
-            feeRates.standard,
-            feeRates.economy,
         ))
         assertEquals("Blocks", LockTime("Blocks", 144u).lockType)
         assertEquals(144u, LockTime("Blocks", 144u).value)

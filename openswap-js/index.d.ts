@@ -4,8 +4,6 @@ export declare class Taker {
   constructor(dataDir: string | undefined | null, walletFileName: string | undefined | null, rpcConfig: RpcConfig | undefined | null, controlPort: number | undefined | null, torAuthPassword: string | undefined | null, zmqAddr: string, password?: string | undefined | null, backendConfig?: BackendConfig | undefined | null, checkBlocklist?: boolean | undefined | null)
   static setupLogging(dataDir: string | undefined | null, level: string): void
   static initNativeLogging(): void
-  /** Fetch fee estimates from Mempool.space API with automatic fallback to Esplora */
-  static fetchMempoolFees(): FeeRates
   prepareOpenswap(swapParams: SwapParams): string
   startOpenswap(swapId: string): SwapReport
   syncOfferbookAndWait(): void
@@ -82,12 +80,6 @@ export interface Balances {
   contract: number
   fidelity: number
   spendable: number
-}
-
-export interface FeeRates {
-  fastest: number
-  standard: number
-  economy: number
 }
 
 export interface FidelityBond {

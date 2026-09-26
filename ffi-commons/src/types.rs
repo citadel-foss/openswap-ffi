@@ -5,12 +5,11 @@
 
 use openswap::{
     bitcoin::{
-        Address as csAddress, Amount as csAmount, OutPoint as openswapOutPoint,
-        PublicKey as csPublicKey, ScriptBuf as csScriptBuf, SignedAmount, Txid as csTxid,
-        absolute::LockTime as csLocktime,
+        absolute::LockTime as csLocktime, Address as csAddress, Amount as csAmount,
+        OutPoint as openswapOutPoint, PublicKey as csPublicKey, ScriptBuf as csScriptBuf,
+        SignedAmount, Txid as csTxid,
     },
     bitcoind::bitcoincore_rpc::Auth,
-    fee_estimation::{BlockTarget, FeeEstimator},
     protocol::common_messages::{FidelityProof as csFidelityProof, Offer as csOffer},
     taker::{
         error::TakerError as OpenswapTakerError,
@@ -22,14 +21,14 @@ use openswap::{
         },
     },
     wallet::{
+        ffi::{
+            restore_wallet_gui_app as cs_restore_wallet_gui_app, MakerFeeInfo as csMakerFeeInfo,
+            ReportUtxo as csReportUtxo, TakerReport as csTakerReport,
+        },
         AddressType as csAddressType, BackendConfig as OpenswapBackendConfig,
         Balances as OpenswapBalances, CoreRpcConfig as OpenswapCoreRpcConfig,
         ElectrumConfig as OpenswapElectrumConfig, FidelityBond as csFidelityBond,
         WalletError as OpenswapWalletError,
-        ffi::{
-            MakerFeeInfo as csMakerFeeInfo, ReportUtxo as csReportUtxo,
-            TakerReport as csTakerReport, restore_wallet_gui_app as cs_restore_wallet_gui_app,
-        },
     },
 };
 use std::path::PathBuf;
@@ -428,13 +427,6 @@ pub struct UtxoSpendInfo {
 pub struct TotalUtxoInfo {
     pub list_unspent_result_entry: ListUnspentResultEntry,
     pub utxo_spend_info: UtxoSpendInfo,
-}
-
-#[derive(Clone, uniffi::Record)]
-pub struct FeeRates {
-    pub fastest: f64,
-    pub standard: f64,
-    pub economy: f64,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -944,29 +936,6 @@ impl From<csTakerReport> for SwapReport {
     }
 }
 
-/// Fetches current network fee estimates from mempool.space or esplora as fallback.
-/// Returns fee rates for fastest, standard, and economy confirmation targets.
-#[uniffi::export]
-pub fn fetch_mempool_fees() -> Result<FeeRates, TakerError> {
-    let fees = FeeEstimator::fetch_mempool_fees()
-        .or_else(|_mempool_err| FeeEstimator::fetch_esplora_fees())
-        .map_err(|e| TakerError::Network {
-            msg: format!("Both fee APIs failed: {:?}", e),
-        })?;
-
-    let get = |target| {
-        fees.get(&target).ok_or_else(|| TakerError::General {
-            msg: format!("Missing fee for {:?}", target),
-        })
-    };
-
-    Ok(FeeRates {
-        fastest: *get(BlockTarget::Fastest)?,
-        standard: *get(BlockTarget::Standard)?,
-        economy: *get(BlockTarget::Economy)?,
-    })
-}
-
 /// Restores a wallet from an encrypted or unencrypted JSON backup file for GUI/FFI applications.
 ///
 /// This is a non-interactive restore method designed for programmatic use via FFI bindings.
@@ -1056,9 +1025,9 @@ mod contract_tests {
     use super::*;
     use openswap::{
         bitcoin::{
+            absolute::{Height, LockTime as OpenswapLockTime, Time},
             Amount as OpenswapAmount, ScriptBuf as OpenswapScriptBuf,
             SignedAmount as OpenswapSignedAmount, Txid as OpenswapTxid,
-            absolute::{Height, LockTime as OpenswapLockTime, Time},
         },
         error::NetError,
         taker::error::TakerError as OpenswapTakerError,

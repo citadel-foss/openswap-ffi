@@ -144,10 +144,6 @@ public class ApiContractTest
         Assert.Equal(
             new long[] { 1, 2, 3, 4, 3 },
             new[] { balances.Regular, balances.Swap, balances.Contract, balances.Fidelity, balances.Spendable });
-        var feeRates = new FeeRates(12.5, 6.25, 1);
-        Assert.Equal(
-            new double[] { 12.5, 6.25, 1 },
-            new[] { feeRates.Fastest, feeRates.Standard, feeRates.Economy });
         var lockTime = new LockTime("Blocks", 144);
         Assert.Equal("Blocks", lockTime.LockType);
         Assert.Equal((uint)144, lockTime.Value);
