@@ -940,16 +940,15 @@ impl From<csTakerReport> for SwapReport {
     }
 }
 
-/// Restores a wallet from an encrypted or unencrypted JSON backup file for GUI/FFI applications.
+/// Restores a wallet from an encrypted JSON backup file for GUI/FFI applications.
 ///
 /// This is a non-interactive restore method designed for programmatic use via FFI bindings.
-/// Unlike `restore_wallet`, this function accepts a path to a JSON backup file and handles both
-/// encrypted and unencrypted backups using [`load_sensitive_struct_from_value`].
+/// Unlike `restore_wallet`, this function accepts a path to a JSON backup file.
 ///
 /// # Behavior
 ///
 /// 1. Reads and parses the JSON backup file into a [`WalletBackup`] structure
-/// 2. If encrypted, decrypts using the provided password and preserves encryption material
+/// 2. Decrypts using the provided password
 /// 3. Constructs the wallet path: `{data_dir_or_default}/wallets/{wallet_file_name_or_default}`
 /// 4. Calls [`Wallet::restore`] to reconstruct the wallet with all UTXOs and metadata
 ///
@@ -957,8 +956,8 @@ impl From<csTakerReport> for SwapReport {
 ///
 /// - `data_dir`: Target directory, defaults to `~/.openswap/taker`
 /// - `wallet_file_name`: Restored wallet filename, defaults to name from backup if empty
-/// - `backup_file_path`: Path to the JSON file containing the wallet backup (encrypted or plain)
-/// - `password`: Required if backup is encrypted, ignored otherwise
+/// - `backup_file_path`: Path to the encrypted JSON wallet backup
+/// - `password`: Required backup password; also becomes the restored wallet password
 #[uniffi::export]
 pub fn restore_wallet_gui_app(
     data_dir: Option<String>,

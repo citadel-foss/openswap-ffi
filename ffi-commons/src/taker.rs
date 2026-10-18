@@ -502,35 +502,37 @@ impl Taker {
             .collect())
     }
 
-    /// Creates a wallet backup for GUI/FFI applications with optional encryption.
+    /// Creates an encrypted wallet backup for GUI/FFI applications.
     ///
     /// This is a ffi-only wrapper around [`Wallet::backup`] that handles encryption
-    /// material generation internally based on whether a password is provided.
+    /// material generation internally from the backup password.
     ///
     /// # Behavior
     ///
-    /// - If `password` is `Some(pwd)` and not empty: Creates encrypted backup using the password
-    /// - If `password` is `None` or empty string: Creates unencrypted backup (logs warning)
+    /// - `password` must be nonempty and encrypts the backup.
+    /// - `wallet_password` must match the current wallet password to authorize the backup.
     /// - The backup is written as a `.json` file at the specified path
     ///
     /// # Parameters
     ///
     /// - `destination_path`: Destination file path for the backup (`.json`)
-    /// - `password`: Optional password for encryption. Use `None` or empty string for plaintext backup
+    /// - `password`: Password used to encrypt the backup
+    /// - `wallet_password`: Current wallet password
     ///
     /// # Example
     ///
     /// ```ignore
-    /// // Encrypted backup
-    /// wallet.backup_gui_app("/path/to/backup".to_string(), Some("my_password".to_string()))?;
-    ///
-    /// // Unencrypted backup
-    /// wallet.backup_gui_app("/path/to/backup".to_string(), None)?;
+    /// taker.backup(
+    ///     "/path/to/backup".to_string(),
+    ///     "backup_password".to_string(),
+    ///     Some("wallet_password".to_string()),
+    /// )?;
     /// ```
     pub fn backup(
         &self,
         destination_path: String,
-        password: Option<String>,
+        password: String,
+        wallet_password: Option<String>,
     ) -> Result<(), TakerError> {
         let taker = self.taker.lock().map_err(|_| TakerError::General {
             msg: "Failed to acquire taker lock".to_string(),
@@ -541,7 +543,7 @@ impl Taker {
             .map_err(|_| TakerError::General {
                 msg: "Failed to acquire wallet write lock".to_string(),
             })?
-            .backup_wallet_gui_app(destination_path, password)
+            .backup_wallet_gui_app(destination_path, Some(password), wallet_password)
             .map_err(|error| TakerError::Wallet {
                 msg: format!("Backup error: {error}"),
             })?;

@@ -176,7 +176,7 @@ let txs = try taker.getTransactions(count: count, skip: skip)                   
 let internal = try taker.getNextInternalAddresses(count: count, addressType: addressType) // derive internal HD addresses
 let external = try taker.getNextExternalAddress(addressType: addressType)              // derive an external receive address
 let utxos = try taker.listAllUtxoSpendInfo()                                           // wallet UTXOs plus spend metadata
-try taker.backup(destinationPath: destinationPath, password: backupPassword)           // write a wallet backup JSON file
+try taker.backup(destinationPath: destinationPath, password: backupPassword, walletPassword: walletPassword) // write an encrypted wallet backup JSON file
 try taker.lockUnspendableUtxos()                                                       // lock fidelity and live-contract UTXOs
 let txid = try taker.sendToAddress(address: address, amount: amount, feeRate: feeRate, manuallySelectedOutpoints: outpoints) // send sats to an external address
 let balances = try taker.getBalances()                                                 // read wallet balances

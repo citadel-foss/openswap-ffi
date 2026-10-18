@@ -676,7 +676,12 @@ impl Taker {
   }
 
   #[napi]
-  pub fn backup(&self, destination_path: String, password: Option<String>) -> Result<()> {
+  pub fn backup(
+    &self,
+    destination_path: String,
+    password: String,
+    wallet_password: Option<String>,
+  ) -> Result<()> {
     let taker = self
       .inner
       .lock()
@@ -685,7 +690,7 @@ impl Taker {
       .get_wallet()
       .write()
       .map_err(|e| napi::Error::from_reason(format!("Failed to acquire wallet lock: {}", e)))?
-      .backup_wallet_gui_app(destination_path, password)
+      .backup_wallet_gui_app(destination_path, Some(password), wallet_password)
       .map_err(|error| napi::Error::from_reason(format!("Backup error: {error}")))?;
 
     Ok(())

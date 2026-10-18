@@ -91,9 +91,9 @@ public sealed class OpenswapClient : IDisposable
     /// <summary>Locks UTXOs that cannot currently be spent.</summary>
     public void LockUnspendableUtxos() => _inner.LockUnspendableUtxos();
 
-    /// <summary>Writes an (optionally encrypted) wallet backup to the given path.</summary>
-    public void Backup(string destinationPath, string? password = null) =>
-        _inner.Backup(destinationPath, password);
+    /// <summary>Writes an encrypted wallet backup using the backup password and current wallet password.</summary>
+    public void Backup(string destinationPath, string password, string? walletPassword) =>
+        _inner.Backup(destinationPath, password, walletPassword);
 
     /// <summary>Off-thread <see cref="SyncWallet"/>.</summary>
     public Task SyncWalletAsync(CancellationToken ct = default) => Task.Run(SyncWallet, ct);

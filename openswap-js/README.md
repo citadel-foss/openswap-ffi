@@ -175,7 +175,7 @@ const txs = taker.getTransactions(count, skip)                            // rec
 const internal = taker.getNextInternalAddresses(count, addressType)       // derive internal HD addresses
 const external = taker.getNextExternalAddress(addressType)                // derive an external receive address
 const utxos = taker.listAllUtxoSpendInfo()                                // wallet UTXOs plus spend metadata
-taker.backup(destinationPath, password)                                   // write a wallet backup JSON file
+taker.backup(destinationPath, backupPassword, walletPassword)             // write an encrypted wallet backup JSON file
 taker.lockUnspendableUtxos()                                              // lock fidelity and live-contract UTXOs
 const txid = taker.sendToAddress(address, amount, feeRate, outpoints)     // send sats to an external address
 const balances = taker.getBalances()                                      // read wallet balances

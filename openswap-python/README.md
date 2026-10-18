@@ -164,7 +164,7 @@ txs = taker.get_transactions(count=count, skip=skip)                            
 internal = taker.get_next_internal_addresses(count=count, address_type=address_type)    # derive internal HD addresses
 external = taker.get_next_external_address(address_type=address_type)                   # derive an external receive address
 utxos = taker.list_all_utxo_spend_info()                                                # wallet UTXOs plus spend metadata
-taker.backup(destination_path=destination_path, password=backup_password)               # write a wallet backup JSON file
+taker.backup(destination_path=destination_path, password=backup_password, wallet_password=wallet_password) # write an encrypted wallet backup JSON file
 taker.lock_unspendable_utxos()                                                          # lock fidelity and live-contract UTXOs
 txid = taker.send_to_address(address, amount, fee_rate, outpoints)                      # send sats to an external address
 balances = taker.get_balances()                                                         # read wallet balances

@@ -171,7 +171,7 @@ val txs = taker.getTransactions(count = count, skip = skip)                     
 val internal = taker.getNextInternalAddresses(count = count, addressType = addressType) // derive internal HD addresses
 val external = taker.getNextExternalAddress(addressType = addressType)                 // derive an external receive address
 val utxos = taker.listAllUtxoSpendInfo()                                               // wallet UTXOs plus spend metadata
-taker.backup(destinationPath = destinationPath, password = backupPassword)             // write a wallet backup JSON file
+taker.backup(destinationPath = destinationPath, password = backupPassword, walletPassword = walletPassword) // write an encrypted wallet backup JSON file
 taker.lockUnspendableUtxos()                                                           // lock fidelity and live-contract UTXOs
 val txid = taker.sendToAddress(address, amount, feeRate, outpoints)                    // send sats to an external address
 val balances = taker.getBalances()                                                     // read wallet balances

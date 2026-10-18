@@ -32,7 +32,7 @@ export declare class Taker {
   getNextExternalAddress(addressType: AddressType): Address
   getName(): string
   listAllUtxoSpendInfo(): Array<[ListUnspentResultEntry, UtxoSpendInfo]>
-  backup(destinationPath: string, password?: string | undefined | null): void
+  backup(destinationPath: string, password: string, walletPassword?: string | undefined | null): void
   static restoreWalletGuiApp(dataDir: string | undefined | null, walletFileName: string | undefined | null, rpcConfig: RpcConfig, backupFile: string, password?: string | undefined | null): void
   lockUnspendableUtxos(): void
   sendToAddress(address: string, amount: number, feeRate?: number | undefined | null, manuallySelectedOutpoints?: Array<OutPoint> | undefined | null): Txid
