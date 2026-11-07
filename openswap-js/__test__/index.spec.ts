@@ -48,11 +48,16 @@ test('Taker exposes every documented static and instance method', (t) => {
   t.deepEqual(staticMethods, [
     'initNativeLogging',
     'isWalletEncrypted',
+    'restoreWalletFromBackup',
+    'restoreWalletFromSeedPhrase',
     'restoreWalletGuiApp',
     'setupLogging',
+    'validateSeedPhrase',
   ])
   t.deepEqual(instanceMethods, [
+    'attachSeedPhrase',
     'backup',
+    'confirmSeedBackup',
     'displayOffer',
     'fetchAllMakers',
     'fetchOffers',
@@ -60,7 +65,9 @@ test('Taker exposes every documented static and instance method', (t) => {
     'getName',
     'getNextExternalAddress',
     'getNextInternalAddresses',
+    'getSeedPhrase',
     'getTransactions',
+    'isSeedBackedUp',
     'listAllUtxoSpendInfo',
     'lockUnspendableUtxos',
     'pollMakerAsync',
@@ -74,4 +81,47 @@ test('Taker exposes every documented static and instance method', (t) => {
     'syncOfferbookAndWaitAsync',
     'verifyDeniability',
   ])
+})
+
+test('seed phrase validation and restore errors reach JS callers', (t) => {
+  const taker = binding.Taker as {
+    validateSeedPhrase(phrase: string): void
+    restoreWalletFromSeedPhrase(...args: unknown[]): void
+    restoreWalletFromBackup(...args: unknown[]): void
+    restoreWalletGuiApp(...args: unknown[]): void
+  }
+  const valid = `${'abandon '.repeat(11)}about`
+  t.notThrows(() => taker.validateSeedPhrase(valid))
+  t.throws(() => taker.validateSeedPhrase('abandon abandon abandon'), {
+    message: /Invalid seed phrase/,
+  })
+
+  const backend = { kind: 'rpc' }
+  // An empty password is refused before any file or node is touched. The
+  // restore must throw instead of silently logging the failure.
+  t.throws(() => taker.restoreWalletFromSeedPhrase(null, 'wallet', backend, valid, ''), {
+    message: /passphrase/,
+  })
+  t.throws(
+    () => taker.restoreWalletFromBackup(null, null, backend, '/nonexistent/backup.json', ''),
+    { message: /passphrase/ },
+  )
+  t.throws(
+    () =>
+      taker.restoreWalletGuiApp(
+        null,
+        null,
+        { url: 'http://127.0.0.1:1', username: 'u', password: 'p', walletName: 'w' },
+        '/nonexistent/backup.json',
+        null,
+      ),
+    { message: /passphrase/ },
+  )
+  t.throws(
+    () =>
+      taker.restoreWalletFromSeedPhrase(null, 'wallet', backend, valid, 'pw', {
+        bondHints: [{ index: 2 ** 31, locktime: 900 }],
+      }),
+    { message: /bond hint index/ },
+  )
 })

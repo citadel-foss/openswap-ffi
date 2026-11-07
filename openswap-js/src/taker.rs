@@ -5,8 +5,8 @@
 use crate::types::{
   Address, AddressType, Amount, BackendConfig, Balances, GetTransactionResultDetail,
   ListTransactionResult, ListUnspentResultEntry, MakerOfferCandidate, Offer, OfferBook, OutPoint,
-  RPCConfig as RpcConfig, ScriptBuf, SignedAmountSats, SwapReport, Txid, UtxoSpendInfo,
-  WalletTxInfo,
+  RPCConfig as RpcConfig, RestoreOptions, ScriptBuf, SignedAmountSats, SwapReport, Txid,
+  UtxoSpendInfo, WalletTxInfo,
 };
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
@@ -24,7 +24,8 @@ use openswap::{
   },
   wallet::{
     ffi, AddressType as csAddressType, BackendConfig as OpenswapBackendConfig,
-    CoreRpcConfig as OpenswapCoreRpcConfig, UTXOSpendInfo as csUtxoSpendInfo,
+    CoreRpcConfig as OpenswapCoreRpcConfig, RestoreOptions as csRestoreOptions,
+    UTXOSpendInfo as csUtxoSpendInfo, Wallet,
   },
 };
 use std::{
@@ -696,6 +697,8 @@ impl Taker {
     Ok(())
   }
 
+  /// Restores a wallet from an encrypted backup file on a Bitcoin Core RPC backend.
+  /// Throws if the restore fails, for example on a wrong password or an unreachable node.
   #[napi]
   pub fn restore_wallet_gui_app(
     data_dir: Option<String>,
@@ -703,16 +706,143 @@ impl Taker {
     rpc_config: RpcConfig,
     backup_file: String,
     password: Option<String>,
-  ) {
-    let data_dir = data_dir.map(PathBuf::from);
-
-    ffi::restore_wallet_gui_app(
-      data_dir,
+  ) -> Result<()> {
+    ffi::restore_wallet_from_backup_gui_app(
+      data_dir.map(PathBuf::from),
       wallet_file_name,
       OpenswapBackendConfig::CoreRpc(rpc_config.into()),
       backup_file.into(),
       password,
-    );
+      csRestoreOptions::default(),
+    )
+    .map_err(|error| napi::Error::from_reason(format!("Restore error: {error}")))
+  }
+
+  /// Restores a wallet from an encrypted backup file on a Bitcoin Core or Electrum backend.
+  /// The backup password also becomes the restored wallet's password.
+  /// Throws if the restore fails.
+  #[napi]
+  pub fn restore_wallet_from_backup(
+    data_dir: Option<String>,
+    wallet_file_name: Option<String>,
+    backend_config: BackendConfig,
+    backup_file: String,
+    password: String,
+    options: Option<RestoreOptions>,
+  ) -> Result<()> {
+    let options = options
+      .map(csRestoreOptions::try_from)
+      .transpose()?
+      .unwrap_or_default();
+    ffi::restore_wallet_from_backup_gui_app(
+      data_dir.map(PathBuf::from),
+      wallet_file_name,
+      OpenswapBackendConfig::try_from(backend_config)?,
+      backup_file.into(),
+      Some(password),
+      options,
+    )
+    .map_err(|error| napi::Error::from_reason(format!("Restore error: {error}")))
+  }
+
+  /// Restores a wallet from a BIP39 seed phrase. Refuses to overwrite an existing wallet.
+  /// Open swaps cannot be recovered from a seed phrase. Throws if the restore fails.
+  #[napi]
+  pub fn restore_wallet_from_seed_phrase(
+    data_dir: Option<String>,
+    wallet_file_name: String,
+    backend_config: BackendConfig,
+    phrase: String,
+    password: String,
+    options: Option<RestoreOptions>,
+  ) -> Result<()> {
+    let options = options
+      .map(csRestoreOptions::try_from)
+      .transpose()?
+      .unwrap_or_default();
+    ffi::restore_wallet_from_mnemonic_gui_app(
+      data_dir.map(PathBuf::from),
+      wallet_file_name,
+      OpenswapBackendConfig::try_from(backend_config)?,
+      phrase,
+      Some(password),
+      options,
+    )
+    .map_err(|error| napi::Error::from_reason(format!("Restore error: {error}")))
+  }
+
+  /// Checks the words and checksum of a seed phrase without touching any wallet.
+  #[napi]
+  pub fn validate_seed_phrase(phrase: String) -> Result<()> {
+    Wallet::validate_mnemonic(&phrase)
+      .map_err(|error| napi::Error::from_reason(format!("Invalid seed phrase: {error}")))
+  }
+
+  /// Returns the wallet's seed phrase so the app can show it to the user.
+  /// Needs the current wallet password on every call. Show it once, then drop it.
+  /// Never log or store it.
+  #[napi]
+  pub fn get_seed_phrase(&self, wallet_password: String) -> Result<String> {
+    let taker = self
+      .inner
+      .lock()
+      .map_err(|e| napi::Error::from_reason(format!("Failed to acquire taker lock: {}", e)))?;
+    let wallet = taker
+      .get_wallet()
+      .read()
+      .map_err(|e| napi::Error::from_reason(format!("Failed to acquire wallet lock: {}", e)))?;
+    let phrase = wallet
+      .get_wallet_mnemonic_gui_app(Some(wallet_password))
+      .map_err(|error| napi::Error::from_reason(format!("Get seed phrase error: {error}")))?;
+    Ok(String::clone(&phrase))
+  }
+
+  /// Records that the user wrote the seed phrase down. Call it after showing the
+  /// phrase and checking a few re-typed words.
+  #[napi]
+  pub fn confirm_seed_backup(&self, wallet_password: String) -> Result<()> {
+    let taker = self
+      .inner
+      .lock()
+      .map_err(|e| napi::Error::from_reason(format!("Failed to acquire taker lock: {}", e)))?;
+    let result = taker
+      .get_wallet()
+      .write()
+      .map_err(|e| napi::Error::from_reason(format!("Failed to acquire wallet lock: {}", e)))?
+      .confirm_seed_backup_gui_app(Some(wallet_password))
+      .map_err(|error| napi::Error::from_reason(format!("Confirm seed backup error: {error}")));
+    result
+  }
+
+  /// Stores the user's original seed phrase in a wallet that has none.
+  /// The phrase must match this wallet's keys. A stored phrase is never replaced.
+  #[napi]
+  pub fn attach_seed_phrase(&self, wallet_password: String, phrase: String) -> Result<()> {
+    let taker = self
+      .inner
+      .lock()
+      .map_err(|e| napi::Error::from_reason(format!("Failed to acquire taker lock: {}", e)))?;
+    let result = taker
+      .get_wallet()
+      .write()
+      .map_err(|e| napi::Error::from_reason(format!("Failed to acquire wallet lock: {}", e)))?
+      .attach_wallet_mnemonic_gui_app(Some(wallet_password), phrase)
+      .map_err(|error| napi::Error::from_reason(format!("Attach seed phrase error: {error}")));
+    result
+  }
+
+  /// Returns true once the user has confirmed writing the seed phrase down.
+  #[napi]
+  pub fn is_seed_backed_up(&self) -> Result<bool> {
+    let taker = self
+      .inner
+      .lock()
+      .map_err(|e| napi::Error::from_reason(format!("Failed to acquire taker lock: {}", e)))?;
+    let wallet = taker
+      .get_wallet()
+      .read()
+      .map_err(|e| napi::Error::from_reason(format!("Failed to acquire wallet lock: {}", e)))?;
+    Ok(wallet.seed_backed_up())
   }
 
   #[napi]

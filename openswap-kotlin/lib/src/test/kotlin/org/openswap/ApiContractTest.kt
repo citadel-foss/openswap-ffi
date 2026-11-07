@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test
 import java.util.UUID
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
@@ -16,15 +17,19 @@ class ApiContractTest {
     @Test
     fun takerMethodSurfaceIsComplete() {
         val expected = setOf(
+            "attachSeedPhrase",
             "backup",
+            "confirmSeedBackup",
             "displayOffer",
             "fetchAllMakers",
             "fetchOffers",
             "getBalances",
             "getNextExternalAddress",
             "getNextInternalAddresses",
+            "getSeedPhrase",
             "getTransactions",
             "getWalletName",
+            "isSeedBackedUp",
             "listAllUtxoSpendInfo",
             "lockUnspendableUtxos",
             "pollMaker",
@@ -49,8 +54,11 @@ class ApiContractTest {
             "createDefaultRpcConfig",
             "isWalletEncrypted",
             "openswapFfiVersion",
+            "restoreWalletFromBackup",
+            "restoreWalletFromSeedPhrase",
             "restoreWalletGuiApp",
             "setupLogging",
+            "validateSeedPhrase",
         )
         val actualGlobals = Class.forName("org.openswap.OpenswapKt")
             .methods
@@ -104,6 +112,52 @@ class ApiContractTest {
         }
         val general = assertIs<TakerException.General>(error)
         assertEquals("Invalid backend kind: invalid (expected rpc or electrum)", general.msg)
+    }
+
+    @Test
+    fun seedPhraseValidationAndRestoreErrorsAreRaised() {
+        val valid = List(11) { "abandon" }.plus("about").joinToString(" ")
+        validateSeedPhrase(valid)
+        val invalid = assertFailsWith<TakerException.Wallet> {
+            validateSeedPhrase("abandon abandon abandon")
+        }
+        assertTrue(invalid.msg.startsWith("Invalid seed phrase"))
+
+        val rpcBackend = BackendConfig(
+            kind = "rpc",
+            url = null,
+            username = null,
+            password = null,
+            walletName = null,
+            zmqAddr = null,
+            socks5 = null,
+            timeout = null,
+            pollIntervalSecs = null,
+            maxRetries = null,
+        )
+        val dataDir = "${System.getProperty("java.io.tmpdir")}/openswap-restore-${UUID.randomUUID()}"
+        // An empty password is refused before any file or node is touched. The
+        // restore must raise instead of silently logging the failure.
+        val seedError = assertFailsWith<TakerException.Wallet> {
+            restoreWalletFromSeedPhrase(dataDir, "wallet", rpcBackend, valid, "")
+        }
+        assertTrue(seedError.msg.contains("passphrase"))
+        val backupError = assertFailsWith<TakerException.Wallet> {
+            restoreWalletFromBackup(dataDir, null, rpcBackend, "/nonexistent/backup.json", "")
+        }
+        assertTrue(backupError.msg.contains("passphrase"))
+        val legacyError = assertFailsWith<TakerException.Wallet> {
+            restoreWalletGuiApp(
+                dataDir, null, createDefaultRpcConfig(), "/nonexistent/backup.json", null,
+            )
+        }
+        assertTrue(legacyError.msg.contains("passphrase"))
+
+        assertEquals(
+            RestoreOptions(birthday = null, addressGap = null, bondGap = null, bondHints = emptyList()),
+            RestoreOptions(),
+        )
+        assertEquals(BondHint(index = 3u, locktime = 900u), BondHint(index = 3u, locktime = 900u))
     }
 
     @Test

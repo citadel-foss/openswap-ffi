@@ -33,6 +33,40 @@ class ApiContractTest < Minitest::Test
     assert_equal 'Invalid backend kind: invalid (expected rpc or electrum)', error.msg
   end
 
+  def test_seed_phrase_validation_and_restore_errors_are_raised
+    valid = (['abandon'] * 11 + ['about']).join(' ')
+    Openswap.validate_seed_phrase(valid)
+    error = assert_raises(Openswap::TakerError::Wallet) do
+      Openswap.validate_seed_phrase('abandon abandon abandon')
+    end
+    assert_match(/\AInvalid seed phrase/, error.msg)
+
+    backend = Openswap::BackendConfig.new(
+      kind: 'rpc', url: nil, username: nil, password: nil,
+      wallet_name: nil, zmq_addr: nil, socks5: nil, timeout: nil,
+      poll_interval_secs: nil, max_retries: nil
+    )
+    data_dir = File.join(Dir.tmpdir, "openswap-restore-#{SecureRandom.hex(12)}")
+    # An empty password is refused before any file or node is touched. The
+    # restore must raise instead of silently logging the failure.
+    error = assert_raises(Openswap::TakerError::Wallet) do
+      Openswap.restore_wallet_from_seed_phrase(data_dir, 'wallet', backend, valid, '', nil)
+    end
+    assert_match(/passphrase/, error.msg)
+    error = assert_raises(Openswap::TakerError::Wallet) do
+      Openswap.restore_wallet_from_backup(
+        data_dir, nil, backend, '/nonexistent/backup.json', '', nil
+      )
+    end
+    assert_match(/passphrase/, error.msg)
+    error = assert_raises(Openswap::TakerError::Wallet) do
+      Openswap.restore_wallet_gui_app(
+        data_dir, nil, Openswap.create_default_rpc_config, '/nonexistent/backup.json', nil
+      )
+    end
+    assert_match(/passphrase/, error.msg)
+  end
+
   def test_scalar_configuration_and_wallet_records_preserve_every_field
     assert_equal 'bc1qexample', Openswap::Address.new(addr: 'bc1qexample').addr
     assert_equal 'P2TR', Openswap::AddressType.new(addr_type: 'P2TR').addr_type
@@ -195,8 +229,9 @@ class ApiContractTest < Minitest::Test
 
   def test_enum_error_and_taker_method_surfaces_are_complete
     expected_globals = %i[
-      create_default_rpc_config is_wallet_encrypted
-      openswap_ffi_version restore_wallet_gui_app setup_logging
+      create_default_rpc_config is_wallet_encrypted openswap_ffi_version
+      restore_wallet_from_backup restore_wallet_from_seed_phrase
+      restore_wallet_gui_app setup_logging validate_seed_phrase
     ]
     assert_empty expected_globals - Openswap.methods
 
@@ -227,9 +262,10 @@ class ApiContractTest < Minitest::Test
                  Openswap::TakerError::TransactionsNeverBroadcast.new(['withheld']).txids
 
     expected_methods = %i[
-      backup display_offer fetch_all_makers fetch_offers get_balances
-      get_next_external_address get_next_internal_addresses get_transactions
-      get_wallet_name list_all_utxo_spend_info lock_unspendable_utxos poll_maker
+      attach_seed_phrase backup confirm_seed_backup display_offer fetch_all_makers
+      fetch_offers get_balances get_next_external_address get_next_internal_addresses
+      get_seed_phrase get_transactions get_wallet_name is_seed_backed_up
+      list_all_utxo_spend_info lock_unspendable_utxos poll_maker
       prepare_openswap recover_active_swap remove_maker send_to_address setup_logging
       start_openswap sync_and_save sync_offerbook_and_wait verify_deniability
     ]

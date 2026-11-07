@@ -89,6 +89,21 @@ Console.WriteLine($"regular={balances.Regular} swap={balances.Swap}");
 
 PSA : `OpenswapClient` is `IDisposable` — always dispose it (a `using` statement is simplest). Relying on the finalizer can leave the wallet directory locked and Tor/RPC connections alive.
 
+### Seed phrase and restore
+
+```csharp
+var phrase = client.GetSeedPhrase(walletPassword);   // show the 12 words to the user
+client.ConfirmSeedBackup(walletPassword);            // user wrote the words down
+client.AttachSeedPhrase(walletPassword, phrase);     // store the phrase in an older wallet
+var backedUp = client.IsSeedBackedUp();              // has the user confirmed the backup
+
+OpenswapClient.ValidateSeedPhrase(phrase);           // check words and checksum
+OpenswapClient.RestoreWalletFromSeedPhrase(dataDir, "restored", backendConfig, phrase, password);
+OpenswapClient.RestoreWalletFromBackup(dataDir, null, backendConfig, backupPath, password);
+```
+
+Restore throws `TakerException.Wallet` on failure. Show the seed phrase once and never log or store it. .NET keeps its own copy of the string, which this library cannot wipe. Restore needs a reachable node and cannot bring back open swaps.
+
 ### Async note
 
 The exported Rust API is synchronous, so the generated methods block. The `*Async` helpers offload the work to the thread pool so callers are not blocked, but they do **not** make the underlying operation cancellable — a `CancellationToken` only stops the task from being observed, the native call runs to completion. If genuine cancellable async is needed, the right fix is to expose `async` functions from `ffi-commons` (UniFFI maps those to C# `Task<T>` directly).

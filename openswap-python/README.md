@@ -177,6 +177,23 @@ taker.recover_active_swap()                                                     
 makers = taker.fetch_all_makers()                                                       # read maker addresses across all states
 ```
 
+### Seed phrase and restore
+
+```python
+phrase = taker.get_seed_phrase(wallet_password=wallet_password)   # show the 12 words to the user
+taker.confirm_seed_backup(wallet_password=wallet_password)        # user wrote the words down
+taker.attach_seed_phrase(wallet_password=wallet_password, phrase=phrase)  # store the phrase in an older wallet
+backed_up = taker.is_seed_backed_up()                             # has the user confirmed the backup
+
+openswap.validate_seed_phrase(phrase)                             # check words and checksum
+options = openswap.RestoreOptions(birthday=800_000, address_gap=None, bond_gap=None,
+                                  bond_hints=[openswap.BondHint(index=0, locktime=900_000)])
+openswap.restore_wallet_from_seed_phrase(data_dir, "restored", backend_config, phrase, password, options)
+openswap.restore_wallet_from_backup(data_dir, None, backend_config, backup_path, password, options)
+```
+
+Restore functions raise `TakerError.Wallet` on failure. `backend_config` can be Bitcoin Core or Electrum. Show the seed phrase once and never log or store it. Your language keeps its own copy of the string, which this library cannot wipe. Restore needs a reachable node and cannot bring back open swaps.
+
 ### AddressType, Balances, and SwapReport
 
 ```python

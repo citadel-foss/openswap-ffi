@@ -22,12 +22,15 @@ use openswap::{
     },
     wallet::{
         AddressType as csAddressType, BackendConfig as OpenswapBackendConfig,
-        Balances as OpenswapBalances, CoreRpcConfig as OpenswapCoreRpcConfig,
-        ElectrumConfig as OpenswapElectrumConfig, FidelityBond as csFidelityBond,
+        Balances as OpenswapBalances, BondHint as csBondHint,
+        CoreRpcConfig as OpenswapCoreRpcConfig, ElectrumConfig as OpenswapElectrumConfig,
+        FidelityBond as csFidelityBond, RestoreOptions as csRestoreOptions,
         WalletError as OpenswapWalletError,
         ffi::{
             MakerFeeInfo as csMakerFeeInfo, ReportUtxo as csReportUtxo,
-            TakerReport as csTakerReport, restore_wallet_gui_app as cs_restore_wallet_gui_app,
+            TakerReport as csTakerReport,
+            restore_wallet_from_backup_gui_app as cs_restore_wallet_from_backup_gui_app,
+            restore_wallet_from_mnemonic_gui_app as cs_restore_wallet_from_mnemonic_gui_app,
         },
     },
 };
@@ -940,24 +943,154 @@ impl From<csTakerReport> for SwapReport {
     }
 }
 
+/// A fidelity bond the user remembers, used to find bonds that were never announced.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct BondHint {
+    /// The bond key's index in the fidelity derivation path. Must be below 2^31.
+    pub index: u32,
+    /// The bond's locktime as a consensus value (block height or Unix time).
+    pub locktime: u32,
+}
+
+/// Tunes how far a wallet restore searches. Every field is optional.
+#[derive(Debug, Clone, Default, uniffi::Record)]
+pub struct RestoreOptions {
+    /// First block the Core rescan reads. `None` keeps the backup's birthday, else genesis.
+    #[uniffi(default = None)]
+    pub birthday: Option<u64>,
+    /// Unused addresses in a row that end the search on each keychain.
+    #[uniffi(default = None)]
+    pub address_gap: Option<u32>,
+    /// Unused bond indexes in a row that end the bond search.
+    #[uniffi(default = None)]
+    pub bond_gap: Option<u32>,
+    /// Bonds made without an OP_RETURN announcement, which only these find.
+    #[uniffi(default = [])]
+    pub bond_hints: Vec<BondHint>,
+}
+
+impl TryFrom<RestoreOptions> for csRestoreOptions {
+    type Error = TakerError;
+
+    fn try_from(options: RestoreOptions) -> Result<Self, Self::Error> {
+        let defaults = csRestoreOptions::default();
+        let bond_hints = options
+            .bond_hints
+            .into_iter()
+            .map(|hint| {
+                if hint.index >= 1 << 31 {
+                    return Err(TakerError::General {
+                        msg: format!("Invalid bond hint index: {} is not below 2^31", hint.index),
+                    });
+                }
+                Ok(csBondHint {
+                    index: hint.index,
+                    locktime: csLocktime::from_consensus(hint.locktime),
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let converted = csRestoreOptions {
+            birthday: options.birthday,
+            address_gap: options.address_gap.unwrap_or(defaults.address_gap),
+            bond_gap: options.bond_gap.unwrap_or(defaults.bond_gap),
+            bond_hints,
+        };
+        Ok(converted)
+    }
+}
+
+fn restore_error(error: OpenswapWalletError) -> TakerError {
+    TakerError::Wallet {
+        msg: format!("Restore error: {error}"),
+    }
+}
+
 /// Restores a wallet from an encrypted JSON backup file for GUI/FFI applications.
 ///
-/// This is a non-interactive restore method designed for programmatic use via FFI bindings.
-/// Unlike `restore_wallet`, this function accepts a path to a JSON backup file.
-///
-/// # Behavior
-///
-/// 1. Reads and parses the JSON backup file into a [`WalletBackup`] structure
-/// 2. Decrypts using the provided password
-/// 3. Constructs the wallet path: `{data_dir_or_default}/wallets/{wallet_file_name_or_default}`
-/// 4. Calls [`Wallet::restore`] to reconstruct the wallet with all UTXOs and metadata
+/// Returns an error if the restore fails, for example on a wrong password, a corrupt
+/// backup, an unreachable node, or an existing wallet file with the same name.
 ///
 /// # Parameters
 ///
 /// - `data_dir`: Target directory, defaults to `~/.openswap/taker`
-/// - `wallet_file_name`: Restored wallet filename, defaults to name from backup if empty
+/// - `wallet_file_name`: Restored wallet filename, defaults to the name in the backup
+/// - `backend_config`: Bitcoin Core RPC or Electrum backend used for the restore scan
 /// - `backup_file_path`: Path to the encrypted JSON wallet backup
-/// - `password`: Required backup password; also becomes the restored wallet password
+/// - `password`: Backup password; it also becomes the restored wallet password
+/// - `options`: Optional search settings, see [`RestoreOptions`]
+#[uniffi::export(default(options = None))]
+pub fn restore_wallet_from_backup(
+    data_dir: Option<String>,
+    wallet_file_name: Option<String>,
+    backend_config: BackendConfig,
+    backup_file_path: String,
+    password: String,
+    options: Option<RestoreOptions>,
+) -> Result<(), TakerError> {
+    let options = options
+        .map(csRestoreOptions::try_from)
+        .transpose()?
+        .unwrap_or_default();
+    cs_restore_wallet_from_backup_gui_app(
+        data_dir.map(PathBuf::from),
+        wallet_file_name,
+        OpenswapBackendConfig::try_from(backend_config)?,
+        backup_file_path.into(),
+        Some(password),
+        options,
+    )
+    .map_err(restore_error)
+}
+
+/// Restores a wallet from a BIP39 seed phrase for GUI/FFI applications.
+///
+/// Recovers regular funds, fidelity bonds and swept swap coins. Swaps that are still
+/// open cannot be recovered from a seed phrase. Refuses to overwrite an existing wallet.
+///
+/// # Parameters
+///
+/// - `data_dir`: Target directory, defaults to `~/.openswap/taker`
+/// - `wallet_file_name`: Name of the restored wallet file
+/// - `backend_config`: Bitcoin Core RPC or Electrum backend used for the restore scan
+/// - `phrase`: The seed phrase words, separated by spaces
+/// - `password`: Password for the restored wallet
+/// - `options`: Optional search settings, see [`RestoreOptions`]
+#[uniffi::export(default(options = None))]
+pub fn restore_wallet_from_seed_phrase(
+    data_dir: Option<String>,
+    wallet_file_name: String,
+    backend_config: BackendConfig,
+    phrase: String,
+    password: String,
+    options: Option<RestoreOptions>,
+) -> Result<(), TakerError> {
+    let options = options
+        .map(csRestoreOptions::try_from)
+        .transpose()?
+        .unwrap_or_default();
+    cs_restore_wallet_from_mnemonic_gui_app(
+        data_dir.map(PathBuf::from),
+        wallet_file_name,
+        OpenswapBackendConfig::try_from(backend_config)?,
+        phrase,
+        Some(password),
+        options,
+    )
+    .map_err(restore_error)
+}
+
+/// Checks the words and checksum of a seed phrase without touching any wallet.
+#[uniffi::export]
+pub fn validate_seed_phrase(phrase: String) -> Result<(), TakerError> {
+    openswap::wallet::Wallet::validate_mnemonic(&phrase).map_err(|error| TakerError::Wallet {
+        msg: format!("Invalid seed phrase: {error}"),
+    })
+}
+
+/// Restores a wallet from an encrypted JSON backup file for GUI/FFI applications.
+///
+/// Same as [`restore_wallet_from_backup`] for a Bitcoin Core RPC backend with default
+/// options. Returns an error if the restore fails.
 #[uniffi::export]
 pub fn restore_wallet_gui_app(
     data_dir: Option<String>,
@@ -965,16 +1098,16 @@ pub fn restore_wallet_gui_app(
     rpc_config: RpcConfig,
     backup_file_path: String,
     password: Option<String>,
-) {
-    let data_dir = data_dir.map(PathBuf::from);
-
-    cs_restore_wallet_gui_app(
-        data_dir,
+) -> Result<(), TakerError> {
+    cs_restore_wallet_from_backup_gui_app(
+        data_dir.map(PathBuf::from),
         wallet_file_name,
         OpenswapBackendConfig::CoreRpc(rpc_config.into()),
         backup_file_path.into(),
         password,
-    );
+        csRestoreOptions::default(),
+    )
+    .map_err(restore_error)
 }
 
 /// Checks whether wallet is encrypted or not.
@@ -1416,5 +1549,122 @@ mod contract_tests {
         assert_ne!(variants[0], variants[1]);
         assert_ne!(variants[1], variants[2]);
         assert_ne!(variants[0], variants[2]);
+    }
+
+    #[test]
+    fn restore_options_default_to_upstream_defaults() {
+        let converted = csRestoreOptions::try_from(RestoreOptions::default()).unwrap();
+        assert_eq!(converted, csRestoreOptions::default());
+    }
+
+    #[test]
+    fn restore_options_keep_explicit_values_and_bond_hints() {
+        let converted = csRestoreOptions::try_from(RestoreOptions {
+            birthday: Some(800_000),
+            address_gap: Some(250),
+            bond_gap: Some(40),
+            bond_hints: vec![BondHint {
+                index: 3,
+                locktime: 900,
+            }],
+        })
+        .unwrap();
+        assert_eq!(converted.birthday, Some(800_000));
+        assert_eq!(converted.address_gap, 250);
+        assert_eq!(converted.bond_gap, 40);
+        assert_eq!(converted.bond_hints.len(), 1);
+        assert_eq!(converted.bond_hints[0].index, 3);
+        assert_eq!(converted.bond_hints[0].locktime.to_consensus_u32(), 900);
+    }
+
+    #[test]
+    fn bond_hint_index_must_be_below_two_to_the_31() {
+        let result = csRestoreOptions::try_from(RestoreOptions {
+            bond_hints: vec![BondHint {
+                index: 1 << 31,
+                locktime: 900,
+            }],
+            ..RestoreOptions::default()
+        });
+        assert_eq!(
+            general_message(result.unwrap_err()),
+            "Invalid bond hint index: 2147483648 is not below 2^31"
+        );
+    }
+
+    #[test]
+    fn seed_phrase_validation_accepts_valid_and_rejects_invalid_phrases() {
+        let valid = "abandon abandon abandon abandon abandon abandon abandon abandon \
+                     abandon abandon abandon about";
+        assert!(validate_seed_phrase(valid.to_string()).is_ok());
+
+        // Wrong checksum, wrong length and unknown words.
+        for bad in [
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon",
+            "abandon abandon abandon",
+            "not a real seed phrase at all",
+            "",
+        ] {
+            match validate_seed_phrase(bad.to_string()) {
+                Err(TakerError::Wallet { msg }) => assert!(msg.starts_with("Invalid seed phrase")),
+                other => panic!("expected a wallet error for {bad:?}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn restore_reports_errors_instead_of_hiding_them() {
+        let dir = std::env::temp_dir().join("openswap-ffi-restore-error-test");
+        let dir = dir.to_string_lossy().to_string();
+
+        // An empty password is refused before any file or node is touched.
+        match restore_wallet_from_backup(
+            Some(dir.clone()),
+            None,
+            backend_config("rpc"),
+            "/nonexistent/backup.json".to_string(),
+            String::new(),
+            None,
+        ) {
+            Err(TakerError::Wallet { msg }) => assert!(msg.contains("passphrase"), "{msg}"),
+            other => panic!("expected a wallet error, got {other:?}"),
+        }
+        match restore_wallet_from_seed_phrase(
+            Some(dir.clone()),
+            "wallet".to_string(),
+            backend_config("rpc"),
+            "abandon".to_string(),
+            String::new(),
+            None,
+        ) {
+            Err(TakerError::Wallet { msg }) => assert!(msg.contains("passphrase"), "{msg}"),
+            other => panic!("expected a wallet error, got {other:?}"),
+        }
+        match restore_wallet_gui_app(
+            Some(dir),
+            None,
+            create_default_rpc_config(),
+            "/nonexistent/backup.json".to_string(),
+            None,
+        ) {
+            Err(TakerError::Wallet { msg }) => assert!(msg.contains("passphrase"), "{msg}"),
+            other => panic!("expected a wallet error, got {other:?}"),
+        }
+
+        // A bad backend kind fails before the restore starts.
+        assert_eq!(
+            general_message(
+                restore_wallet_from_seed_phrase(
+                    None,
+                    "wallet".to_string(),
+                    backend_config("bogus"),
+                    "abandon".to_string(),
+                    "pw".to_string(),
+                    None,
+                )
+                .unwrap_err()
+            ),
+            "Invalid backend kind: bogus (expected rpc or electrum)"
+        );
     }
 }

@@ -10,9 +10,11 @@ public class ApiContractTest
     public void TakerMethodSurfaceIsComplete()
     {
         string[] expected = [
-            "Backup", "DisplayOffer", "FetchAllMakers", "FetchOffers", "GetBalances",
-            "GetNextExternalAddress", "GetNextInternalAddresses", "GetTransactions",
-            "GetWalletName", "ListAllUtxoSpendInfo", "LockUnspendableUtxos", "PollMaker",
+            "AttachSeedPhrase", "Backup", "ConfirmSeedBackup", "DisplayOffer",
+            "FetchAllMakers", "FetchOffers", "GetBalances", "GetNextExternalAddress",
+            "GetNextInternalAddresses", "GetSeedPhrase", "GetTransactions",
+            "GetWalletName", "IsSeedBackedUp", "ListAllUtxoSpendInfo",
+            "LockUnspendableUtxos", "PollMaker",
             "PrepareOpenswap", "RecoverActiveSwap", "RemoveMaker", "SendToAddress",
             "SetupLogging", "StartOpenswap", "SyncAndSave", "SyncOfferbookAndWait",
             "VerifyDeniability",
@@ -24,8 +26,9 @@ public class ApiContractTest
         Assert.DoesNotContain(expected, method => !actual.Contains(method));
 
         string[] expectedGlobals = [
-            "CreateDefaultRpcConfig", "IsWalletEncrypted",
-            "OpenswapFfiVersion", "RestoreWalletGuiApp", "SetupLogging",
+            "CreateDefaultRpcConfig", "IsWalletEncrypted", "OpenswapFfiVersion",
+            "RestoreWalletFromBackup", "RestoreWalletFromSeedPhrase",
+            "RestoreWalletGuiApp", "SetupLogging", "ValidateSeedPhrase",
         ];
         var actualGlobals = typeof(global::Openswap.Native.Openswap).GetMethods()
             .Select(method => method.Name)
@@ -57,6 +60,32 @@ public class ApiContractTest
         Assert.Equal(
             "Invalid backend kind: invalid (expected rpc or electrum)",
             error.msg);
+    }
+
+    [Fact]
+    public void SeedPhraseValidationAndRestoreErrorsAreThrown()
+    {
+        var valid = string.Join(" ", Enumerable.Repeat("abandon", 11).Append("about"));
+        OpenswapClient.ValidateSeedPhrase(valid);
+        var invalid = Assert.Throws<TakerException.Wallet>(
+            () => OpenswapClient.ValidateSeedPhrase("abandon abandon abandon"));
+        Assert.StartsWith("Invalid seed phrase", invalid.msg);
+
+        var rpcBackend = new BackendConfig(
+            Kind: "rpc", Url: null, Username: null, Password: null,
+            WalletName: null, ZmqAddr: null, Socks5: null, Timeout: null,
+            PollIntervalSecs: null, MaxRetries: null);
+        var dataDir = Path.Combine(Path.GetTempPath(), $"openswap-restore-{Guid.NewGuid():N}");
+        // An empty password is refused before any file or node is touched. The
+        // restore must throw instead of silently logging the failure.
+        var seedError = Assert.Throws<TakerException.Wallet>(() =>
+            OpenswapClient.RestoreWalletFromSeedPhrase(
+                dataDir, "wallet", rpcBackend, valid, "", null));
+        Assert.Contains("passphrase", seedError.msg);
+        var backupError = Assert.Throws<TakerException.Wallet>(() =>
+            OpenswapClient.RestoreWalletFromBackup(
+                dataDir, null, rpcBackend, "/nonexistent/backup.json", "", null));
+        Assert.Contains("passphrase", backupError.msg);
     }
 
     [Fact]

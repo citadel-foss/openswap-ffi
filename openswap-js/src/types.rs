@@ -21,9 +21,9 @@ use openswap::{
     ffi::{
       MakerFeeInfo as csMakerFeeInfo, ReportUtxo as csReportUtxo, TakerReport as csTakerReport,
     },
-    BackendConfig as OpenswapBackendConfig, Balances as OpenswapBalances,
+    BackendConfig as OpenswapBackendConfig, Balances as OpenswapBalances, BondHint as csBondHint,
     CoreRpcConfig as OpenswapCoreRpcConfig, ElectrumConfig as OpenswapElectrumConfig,
-    FidelityBond as csFidelityBond,
+    FidelityBond as csFidelityBond, RestoreOptions as csRestoreOptions,
   },
 };
 use std::{error::Error, fmt};
@@ -234,6 +234,66 @@ impl BackendConfig {
 fn apply_if_some<T>(target: &mut T, value: Option<T>) {
   if let Some(value) = value {
     *target = value;
+  }
+}
+
+/// A fidelity bond the user remembers, used to find bonds that were never announced.
+#[napi(object)]
+pub struct BondHint {
+  /// The bond key's index in the fidelity derivation path. Must be below 2^31.
+  pub index: u32,
+  /// The bond's locktime as a consensus value (block height or Unix time).
+  pub locktime: u32,
+}
+
+/// Tunes how far a wallet restore searches. Every field is optional.
+#[napi(object)]
+pub struct RestoreOptions {
+  /// First block the Core rescan reads. Omit to keep the backup's birthday, else genesis.
+  pub birthday: Option<i64>,
+  /// Unused addresses in a row that end the search on each keychain.
+  pub address_gap: Option<u32>,
+  /// Unused bond indexes in a row that end the bond search.
+  pub bond_gap: Option<u32>,
+  /// Bonds made without an OP_RETURN announcement, which only these find.
+  pub bond_hints: Option<Vec<BondHint>>,
+}
+
+impl TryFrom<RestoreOptions> for csRestoreOptions {
+  type Error = napi::Error;
+
+  fn try_from(options: RestoreOptions) -> napi::Result<Self> {
+    let defaults = csRestoreOptions::default();
+    let birthday = options
+      .birthday
+      .map(|birthday| {
+        u64::try_from(birthday)
+          .map_err(|_| napi::Error::from_reason("Birthday must be non-negative"))
+      })
+      .transpose()?;
+    let bond_hints = options
+      .bond_hints
+      .unwrap_or_default()
+      .into_iter()
+      .map(|hint| {
+        if hint.index >= 1 << 31 {
+          return Err(napi::Error::from_reason(format!(
+            "Invalid bond hint index: {} is not below 2^31",
+            hint.index
+          )));
+        }
+        Ok(csBondHint {
+          index: hint.index,
+          locktime: csLocktime::from_consensus(hint.locktime),
+        })
+      })
+      .collect::<napi::Result<Vec<_>>>()?;
+    Ok(csRestoreOptions {
+      birthday,
+      address_gap: options.address_gap.unwrap_or(defaults.address_gap),
+      bond_gap: options.bond_gap.unwrap_or(defaults.bond_gap),
+      bond_hints,
+    })
   }
 }
 
@@ -987,6 +1047,62 @@ mod contract_tests {
     assert_eq!(
       MakerProtocol::from(csMakerProtocol::Unified).protocol_type,
       "Unified"
+    );
+  }
+
+  #[test]
+  fn restore_options_default_and_keep_explicit_values() {
+    let defaults = csRestoreOptions::try_from(RestoreOptions {
+      birthday: None,
+      address_gap: None,
+      bond_gap: None,
+      bond_hints: None,
+    })
+    .unwrap();
+    assert_eq!(defaults, csRestoreOptions::default());
+
+    let explicit = csRestoreOptions::try_from(RestoreOptions {
+      birthday: Some(800_000),
+      address_gap: Some(250),
+      bond_gap: Some(40),
+      bond_hints: Some(vec![BondHint {
+        index: 3,
+        locktime: 900,
+      }]),
+    })
+    .unwrap();
+    assert_eq!(explicit.birthday, Some(800_000));
+    assert_eq!(explicit.address_gap, 250);
+    assert_eq!(explicit.bond_gap, 40);
+    assert_eq!(explicit.bond_hints[0].index, 3);
+    assert_eq!(explicit.bond_hints[0].locktime.to_consensus_u32(), 900);
+  }
+
+  #[test]
+  fn restore_options_reject_negative_birthday_and_large_bond_index() {
+    let negative = csRestoreOptions::try_from(RestoreOptions {
+      birthday: Some(-1),
+      address_gap: None,
+      bond_gap: None,
+      bond_hints: None,
+    });
+    assert_eq!(
+      negative.unwrap_err().reason,
+      "Birthday must be non-negative"
+    );
+
+    let large = csRestoreOptions::try_from(RestoreOptions {
+      birthday: None,
+      address_gap: None,
+      bond_gap: None,
+      bond_hints: Some(vec![BondHint {
+        index: 1 << 31,
+        locktime: 900,
+      }]),
+    });
+    assert_eq!(
+      large.unwrap_err().reason,
+      "Invalid bond hint index: 2147483648 is not below 2^31"
     );
   }
 }
