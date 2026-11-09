@@ -94,15 +94,17 @@ PSA : `OpenswapClient` is `IDisposable` — always dispose it (a `using` stateme
 ```csharp
 var phrase = client.GetSeedPhrase(walletPassword);   // show the 12 words to the user
 client.ConfirmSeedBackup(walletPassword);            // user wrote the words down
-client.AttachSeedPhrase(walletPassword, phrase);     // store the phrase in an older wallet
 var backedUp = client.IsSeedBackedUp();              // has the user confirmed the backup
+
+// Wallet made before phrases were stored: pass the phrase the user already has.
+client.AttachSeedPhrase(walletPassword, usersOriginalPhrase);
 
 OpenswapClient.ValidateSeedPhrase(phrase);           // check words and checksum
 OpenswapClient.RestoreWalletFromSeedPhrase(dataDir, "restored", backendConfig, phrase, password);
 OpenswapClient.RestoreWalletFromBackup(dataDir, null, backendConfig, backupPath, password);
 ```
 
-Restore throws `TakerException.Wallet` on failure. Show the seed phrase once and never log or store it. .NET keeps its own copy of the string, which this library cannot wipe. Restore needs a reachable node and cannot bring back open swaps.
+Restore throws `TakerException.Wallet` when the restore fails and `TakerException.General` for invalid backend settings or bond hints. Show the seed phrase once and never log or store it. .NET keeps its own copy of the string, which this library cannot wipe. Restore needs a reachable node and cannot bring back open swaps.
 
 ### Async note
 

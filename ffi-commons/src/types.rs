@@ -1667,4 +1667,56 @@ mod contract_tests {
             "Invalid backend kind: bogus (expected rpc or electrum)"
         );
     }
+
+    #[test]
+    fn restore_returns_backend_failures_instead_of_swallowing_them() {
+        // A non-empty password passes the password guard. The restore then fails
+        // against a node that is not there, and every entry point must return
+        // that error instead of only logging it.
+        let mut backend = backend_config("rpc");
+        backend.url = Some("http://127.0.0.1:1".to_string());
+        let phrase = "abandon abandon abandon abandon abandon abandon abandon abandon \
+                      abandon abandon abandon about";
+        let dir = std::env::temp_dir().join("openswap-ffi-restore-backend-test");
+        let dir = dir.to_string_lossy().to_string();
+
+        let results = [
+            restore_wallet_from_seed_phrase(
+                Some(dir.clone()),
+                "wallet".to_string(),
+                backend.clone(),
+                phrase.to_string(),
+                "pw".to_string(),
+                None,
+            ),
+            restore_wallet_from_backup(
+                Some(dir.clone()),
+                None,
+                backend,
+                "/nonexistent/backup.json".to_string(),
+                "pw".to_string(),
+                None,
+            ),
+            restore_wallet_gui_app(
+                Some(dir),
+                None,
+                RpcConfig {
+                    url: "http://127.0.0.1:1".to_string(),
+                    username: "user".to_string(),
+                    password: "password".to_string(),
+                    wallet_name: "wallet".to_string(),
+                },
+                "/nonexistent/backup.json".to_string(),
+                Some("pw".to_string()),
+            ),
+        ];
+        for result in results {
+            match result {
+                Err(TakerError::Wallet { msg }) => {
+                    assert!(msg.starts_with("Restore error: "), "{msg}")
+                }
+                other => panic!("expected a returned wallet error, got {other:?}"),
+            }
+        }
+    }
 }

@@ -193,8 +193,10 @@ const makers = taker.fetchAllMakers()                                     // rea
 ```ts
 const phrase = taker.getSeedPhrase(walletPassword)          // show the 12 words to the user
 taker.confirmSeedBackup(walletPassword)                     // user wrote the words down
-taker.attachSeedPhrase(walletPassword, phrase)              // store the phrase in an older wallet
 const backedUp = taker.isSeedBackedUp()                     // has the user confirmed the backup
+
+// Wallet made before phrases were stored: pass the phrase the user already has.
+taker.attachSeedPhrase(walletPassword, usersOriginalPhrase)
 
 Taker.validateSeedPhrase(phrase)                            // check words and checksum
 const options = { birthday: 800000, bondHints: [{ index: 0, locktime: 900000 }] }
@@ -202,7 +204,7 @@ Taker.restoreWalletFromSeedPhrase(dataDir, 'restored', backendConfig, phrase, pa
 Taker.restoreWalletFromBackup(dataDir, null, backendConfig, backupPath, password, options)
 ```
 
-Restore functions throw on failure. `backendConfig` can be Bitcoin Core or Electrum. Show the seed phrase once and never log or store it. Your language keeps its own copy of the string, which this library cannot wipe. Restore needs a reachable node and cannot bring back open swaps.
+Restore functions throw an `Error` on any failure, including invalid backend settings or bond hints. `backendConfig` can be Bitcoin Core or Electrum. Show the seed phrase once and never log or store it. Your language keeps its own copy of the string, which this library cannot wipe. Restore needs a reachable node and cannot bring back open swaps.
 
 ### AddressType, Balances, and SwapReport
 

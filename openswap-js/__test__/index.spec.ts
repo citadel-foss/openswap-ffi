@@ -124,4 +124,19 @@ test('seed phrase validation and restore errors reach JS callers', (t) => {
       }),
     { message: /bond hint index/ },
   )
+  // 2^32 + 3 must be rejected, not wrapped to 3 by the number conversion.
+  t.throws(
+    () =>
+      taker.restoreWalletFromSeedPhrase(null, 'wallet', backend, valid, 'pw', {
+        bondHints: [{ index: 2 ** 32 + 3, locktime: 900 }],
+      }),
+    { message: /Bond hint index must be a whole number/ },
+  )
+  t.throws(
+    () =>
+      taker.restoreWalletFromSeedPhrase(null, 'wallet', backend, valid, 'pw', {
+        addressGap: 2 ** 32 + 5,
+      }),
+    { message: /Address gap must be a whole number/ },
+  )
 })

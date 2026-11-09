@@ -193,8 +193,10 @@ makers = taker.fetch_all_makers                                               # 
 ```ruby
 phrase = taker.get_seed_phrase(wallet_password)                 # show the 12 words to the user
 taker.confirm_seed_backup(wallet_password)                      # user wrote the words down
-taker.attach_seed_phrase(wallet_password, phrase)               # store the phrase in an older wallet
 backed_up = taker.is_seed_backed_up                             # has the user confirmed the backup
+
+# Wallet made before phrases were stored: pass the phrase the user already has.
+taker.attach_seed_phrase(wallet_password, users_original_phrase)
 
 Openswap.validate_seed_phrase(phrase)                           # check words and checksum
 options = Openswap::RestoreOptions.new(birthday: 800_000, address_gap: nil, bond_gap: nil, bond_hints: [])
@@ -202,7 +204,7 @@ Openswap.restore_wallet_from_seed_phrase(data_dir, 'restored', backend_config, p
 Openswap.restore_wallet_from_backup(data_dir, nil, backend_config, backup_path, password, options)
 ```
 
-Restore functions raise `Openswap::TakerError::Wallet` on failure. `backend_config` can be Bitcoin Core or Electrum. Show the seed phrase once and never log or store it. Your language keeps its own copy of the string, which this library cannot wipe. Restore needs a reachable node and cannot bring back open swaps.
+Restore functions raise `Openswap::TakerError::Wallet` when the restore fails and `Openswap::TakerError::General` for invalid backend settings or bond hints. `backend_config` can be Bitcoin Core or Electrum. Show the seed phrase once and never log or store it. Your language keeps its own copy of the string, which this library cannot wipe. Restore needs a reachable node and cannot bring back open swaps.
 
 ### AddressType, Balances, and SwapReport
 

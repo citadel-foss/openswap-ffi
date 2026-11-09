@@ -238,25 +238,45 @@ fn apply_if_some<T>(target: &mut T, value: Option<T>) {
 }
 
 /// A fidelity bond the user remembers, used to find bonds that were never announced.
+///
+/// Numbers are `f64` so out-of-range JS values are rejected here instead of being
+/// wrapped to 32 bits by the napi conversion.
 #[napi(object)]
 pub struct BondHint {
   /// The bond key's index in the fidelity derivation path. Must be below 2^31.
-  pub index: u32,
+  pub index: f64,
   /// The bond's locktime as a consensus value (block height or Unix time).
-  pub locktime: u32,
+  pub locktime: f64,
 }
 
 /// Tunes how far a wallet restore searches. Every field is optional.
 #[napi(object)]
 pub struct RestoreOptions {
   /// First block the Core rescan reads. Omit to keep the backup's birthday, else genesis.
-  pub birthday: Option<i64>,
+  pub birthday: Option<f64>,
   /// Unused addresses in a row that end the search on each keychain.
-  pub address_gap: Option<u32>,
+  pub address_gap: Option<f64>,
   /// Unused bond indexes in a row that end the bond search.
-  pub bond_gap: Option<u32>,
+  pub bond_gap: Option<f64>,
   /// Bonds made without an OP_RETURN announcement, which only these find.
   pub bond_hints: Option<Vec<BondHint>>,
+}
+
+/// Largest whole number a JS `number` holds exactly.
+const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
+
+fn checked_whole_number(name: &str, value: f64, max: f64) -> napi::Result<f64> {
+  if value.is_finite() && value.fract() == 0.0 && (0.0..=max).contains(&value) {
+    Ok(value)
+  } else {
+    Err(napi::Error::from_reason(format!(
+      "{name} must be a whole number from 0 to {max}"
+    )))
+  }
+}
+
+fn checked_u32(name: &str, value: f64) -> napi::Result<u32> {
+  checked_whole_number(name, value, u32::MAX as f64).map(|value| value as u32)
 }
 
 impl TryFrom<RestoreOptions> for csRestoreOptions {
@@ -266,32 +286,41 @@ impl TryFrom<RestoreOptions> for csRestoreOptions {
     let defaults = csRestoreOptions::default();
     let birthday = options
       .birthday
-      .map(|birthday| {
-        u64::try_from(birthday)
-          .map_err(|_| napi::Error::from_reason("Birthday must be non-negative"))
-      })
-      .transpose()?;
+      .map(|birthday| checked_whole_number("Birthday", birthday, MAX_SAFE_INTEGER))
+      .transpose()?
+      .map(|birthday| birthday as u64);
+    let address_gap = options
+      .address_gap
+      .map(|gap| checked_u32("Address gap", gap))
+      .transpose()?
+      .unwrap_or(defaults.address_gap);
+    let bond_gap = options
+      .bond_gap
+      .map(|gap| checked_u32("Bond gap", gap))
+      .transpose()?
+      .unwrap_or(defaults.bond_gap);
     let bond_hints = options
       .bond_hints
       .unwrap_or_default()
       .into_iter()
       .map(|hint| {
-        if hint.index >= 1 << 31 {
+        let index = checked_u32("Bond hint index", hint.index)?;
+        let locktime = checked_u32("Bond hint locktime", hint.locktime)?;
+        if index >= 1 << 31 {
           return Err(napi::Error::from_reason(format!(
-            "Invalid bond hint index: {} is not below 2^31",
-            hint.index
+            "Invalid bond hint index: {index} is not below 2^31"
           )));
         }
         Ok(csBondHint {
-          index: hint.index,
-          locktime: csLocktime::from_consensus(hint.locktime),
+          index,
+          locktime: csLocktime::from_consensus(locktime),
         })
       })
       .collect::<napi::Result<Vec<_>>>()?;
     Ok(csRestoreOptions {
       birthday,
-      address_gap: options.address_gap.unwrap_or(defaults.address_gap),
-      bond_gap: options.bond_gap.unwrap_or(defaults.bond_gap),
+      address_gap,
+      bond_gap,
       bond_hints,
     })
   }
@@ -1062,12 +1091,12 @@ mod contract_tests {
     assert_eq!(defaults, csRestoreOptions::default());
 
     let explicit = csRestoreOptions::try_from(RestoreOptions {
-      birthday: Some(800_000),
-      address_gap: Some(250),
-      bond_gap: Some(40),
+      birthday: Some(800_000.0),
+      address_gap: Some(250.0),
+      bond_gap: Some(40.0),
       bond_hints: Some(vec![BondHint {
-        index: 3,
-        locktime: 900,
+        index: 3.0,
+        locktime: 900.0,
       }]),
     })
     .unwrap();
@@ -1078,31 +1107,46 @@ mod contract_tests {
     assert_eq!(explicit.bond_hints[0].locktime.to_consensus_u32(), 900);
   }
 
-  #[test]
-  fn restore_options_reject_negative_birthday_and_large_bond_index() {
-    let negative = csRestoreOptions::try_from(RestoreOptions {
-      birthday: Some(-1),
-      address_gap: None,
+  fn options_with(
+    birthday: Option<f64>,
+    address_gap: Option<f64>,
+    bond_hint: Option<(f64, f64)>,
+  ) -> napi::Result<csRestoreOptions> {
+    csRestoreOptions::try_from(RestoreOptions {
+      birthday,
+      address_gap,
       bond_gap: None,
-      bond_hints: None,
-    });
-    assert_eq!(
-      negative.unwrap_err().reason,
-      "Birthday must be non-negative"
-    );
+      bond_hints: bond_hint.map(|(index, locktime)| vec![BondHint { index, locktime }]),
+    })
+  }
 
-    let large = csRestoreOptions::try_from(RestoreOptions {
-      birthday: None,
-      address_gap: None,
-      bond_gap: None,
-      bond_hints: Some(vec![BondHint {
-        index: 1 << 31,
-        locktime: 900,
-      }]),
-    });
+  #[test]
+  fn restore_options_reject_values_that_would_wrap_or_change() {
+    // 2^32 + 3 would wrap to 3 in a plain u32 conversion.
+    let wrapped = 4_294_967_299.0;
+    for bad in [-1.0, 1.5, f64::NAN, f64::INFINITY, wrapped] {
+      assert!(options_with(None, Some(bad), None).is_err(), "gap {bad}");
+      assert!(
+        options_with(None, None, Some((bad, 900.0))).is_err(),
+        "index {bad}"
+      );
+      assert!(
+        options_with(None, None, Some((3.0, bad))).is_err(),
+        "locktime {bad}"
+      );
+    }
+    for bad in [-1.0, 0.5, f64::NAN, f64::INFINITY, 9_007_199_254_740_992.0] {
+      assert!(
+        options_with(Some(bad), None, None).is_err(),
+        "birthday {bad}"
+      );
+    }
     assert_eq!(
-      large.unwrap_err().reason,
+      options_with(None, None, Some(((1u64 << 31) as f64, 900.0)))
+        .unwrap_err()
+        .reason,
       "Invalid bond hint index: 2147483648 is not below 2^31"
     );
+    assert!(options_with(Some(9_007_199_254_740_991.0), Some(u32::MAX as f64), None).is_ok());
   }
 }

@@ -194,8 +194,10 @@ let makers = try taker.fetchAllMakers()                                         
 ```swift
 let phrase = try taker.getSeedPhrase(walletPassword: walletPassword)      // show the 12 words to the user
 try taker.confirmSeedBackup(walletPassword: walletPassword)               // user wrote the words down
-try taker.attachSeedPhrase(walletPassword: walletPassword, phrase: phrase) // store the phrase in an older wallet
 let backedUp = try taker.isSeedBackedUp()                                 // has the user confirmed the backup
+
+// Wallet made before phrases were stored: pass the phrase the user already has.
+try taker.attachSeedPhrase(walletPassword: walletPassword, phrase: usersOriginalPhrase)
 
 try validateSeedPhrase(phrase: phrase)                                    // check words and checksum
 let options = RestoreOptions(birthday: 800_000, bondHints: [BondHint(index: 0, locktime: 900_000)])
@@ -203,7 +205,7 @@ try restoreWalletFromSeedPhrase(dataDir: dataDir, walletFileName: "restored", ba
 try restoreWalletFromBackup(dataDir: dataDir, walletFileName: nil, backendConfig: backendConfig, backupFilePath: backupPath, password: password, options: options)
 ```
 
-Restore functions throw `TakerError.Wallet` on failure. `backendConfig` can be Bitcoin Core or Electrum. Show the seed phrase once and never log or store it. Your language keeps its own copy of the string, which this library cannot wipe. Restore needs a reachable node and cannot bring back open swaps.
+Restore functions throw `TakerError.Wallet` when the restore fails and `TakerError.General` for invalid backend settings or bond hints. `backendConfig` can be Bitcoin Core or Electrum. Show the seed phrase once and never log or store it. Your language keeps its own copy of the string, which this library cannot wipe. Restore needs a reachable node and cannot bring back open swaps.
 
 ### AddressType, Balances, and SwapReport
 

@@ -219,15 +219,17 @@ await taker.dispose()                                      // release native res
 ```typescript
 const phrase = await taker.getSeedPhrase(walletPassword)      // show the 12 words to the user
 await taker.confirmSeedBackup(walletPassword)                 // user wrote the words down
-await taker.attachSeedPhrase(walletPassword, phrase)          // store the phrase in an older wallet
 const backedUp = await taker.isSeedBackedUp()                 // has the user confirmed the backup
+
+// Wallet made before phrases were stored: pass the phrase the user already has.
+await taker.attachSeedPhrase(walletPassword, usersOriginalPhrase)
 
 await OpenswapTaker.validateSeedPhrase(phrase)                // check words and checksum
 await OpenswapTaker.restoreWalletFromSeedPhrase({ walletFileName, backendConfig, phrase, password })
 await OpenswapTaker.restoreWalletFromBackup({ backendConfig, backupFilePath, password, options })
 ```
 
-Restore rejects on failure. Show the seed phrase once and never log or store it. JavaScript keeps its own copy of the string, which this library cannot wipe. Restore needs a reachable node and cannot bring back open swaps.
+Restore rejects with a `TakerException` on failure: `Wallet` when the restore fails, `General` for invalid backend settings or bond hints. Show the seed phrase once and never log or store it. JavaScript keeps its own copy of the string, which this library cannot wipe. Restore needs a reachable node and cannot bring back open swaps.
 
 ### `AddressType`
 
