@@ -190,13 +190,18 @@ const makers = taker.fetchAllMakers()                                     // rea
 
 ### Seed phrase and restore
 
+A wallet made before phrases were stored has none to read. Attach the phrase the user already has first:
+
+```ts
+taker.attachSeedPhrase(walletPassword, usersOriginalPhrase)
+```
+
+Then read it back and confirm the backup:
+
 ```ts
 const phrase = taker.getSeedPhrase(walletPassword)          // show the 12 words to the user
 taker.confirmSeedBackup(walletPassword)                     // user wrote the words down
 const backedUp = taker.isSeedBackedUp()                     // has the user confirmed the backup
-
-// Wallet made before phrases were stored: pass the phrase the user already has.
-taker.attachSeedPhrase(walletPassword, usersOriginalPhrase)
 
 Taker.validateSeedPhrase(phrase)                            // check words and checksum
 const options = { birthday: 800000, bondHints: [{ index: 0, locktime: 900000 }] }

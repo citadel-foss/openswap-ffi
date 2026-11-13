@@ -91,13 +91,18 @@ PSA : `OpenswapClient` is `IDisposable` — always dispose it (a `using` stateme
 
 ### Seed phrase and restore
 
+A wallet made before phrases were stored has none to read. Attach the phrase the user already has first:
+
+```csharp
+client.AttachSeedPhrase(walletPassword, usersOriginalPhrase);
+```
+
+Then read it back and confirm the backup:
+
 ```csharp
 var phrase = client.GetSeedPhrase(walletPassword);   // show the 12 words to the user
 client.ConfirmSeedBackup(walletPassword);            // user wrote the words down
 var backedUp = client.IsSeedBackedUp();              // has the user confirmed the backup
-
-// Wallet made before phrases were stored: pass the phrase the user already has.
-client.AttachSeedPhrase(walletPassword, usersOriginalPhrase);
 
 OpenswapClient.ValidateSeedPhrase(phrase);           // check words and checksum
 OpenswapClient.RestoreWalletFromSeedPhrase(dataDir, "restored", backendConfig, phrase, password);

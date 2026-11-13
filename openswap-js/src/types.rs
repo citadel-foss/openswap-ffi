@@ -1110,12 +1110,13 @@ mod contract_tests {
   fn options_with(
     birthday: Option<f64>,
     address_gap: Option<f64>,
+    bond_gap: Option<f64>,
     bond_hint: Option<(f64, f64)>,
   ) -> napi::Result<csRestoreOptions> {
     csRestoreOptions::try_from(RestoreOptions {
       birthday,
       address_gap,
-      bond_gap: None,
+      bond_gap,
       bond_hints: bond_hint.map(|(index, locktime)| vec![BondHint { index, locktime }]),
     })
   }
@@ -1125,28 +1126,41 @@ mod contract_tests {
     // 2^32 + 3 would wrap to 3 in a plain u32 conversion.
     let wrapped = 4_294_967_299.0;
     for bad in [-1.0, 1.5, f64::NAN, f64::INFINITY, wrapped] {
-      assert!(options_with(None, Some(bad), None).is_err(), "gap {bad}");
       assert!(
-        options_with(None, None, Some((bad, 900.0))).is_err(),
+        options_with(None, Some(bad), None, None).is_err(),
+        "address gap {bad}"
+      );
+      assert!(
+        options_with(None, None, Some(bad), None).is_err(),
+        "bond gap {bad}"
+      );
+      assert!(
+        options_with(None, None, None, Some((bad, 900.0))).is_err(),
         "index {bad}"
       );
       assert!(
-        options_with(None, None, Some((3.0, bad))).is_err(),
+        options_with(None, None, None, Some((3.0, bad))).is_err(),
         "locktime {bad}"
       );
     }
     for bad in [-1.0, 0.5, f64::NAN, f64::INFINITY, 9_007_199_254_740_992.0] {
       assert!(
-        options_with(Some(bad), None, None).is_err(),
+        options_with(Some(bad), None, None, None).is_err(),
         "birthday {bad}"
       );
     }
     assert_eq!(
-      options_with(None, None, Some(((1u64 << 31) as f64, 900.0)))
+      options_with(None, None, None, Some(((1u64 << 31) as f64, 900.0)))
         .unwrap_err()
         .reason,
       "Invalid bond hint index: 2147483648 is not below 2^31"
     );
-    assert!(options_with(Some(9_007_199_254_740_991.0), Some(u32::MAX as f64), None).is_ok());
+    assert!(options_with(
+      Some(9_007_199_254_740_991.0),
+      Some(u32::MAX as f64),
+      Some(u32::MAX as f64),
+      None
+    )
+    .is_ok());
   }
 }

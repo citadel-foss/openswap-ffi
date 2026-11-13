@@ -186,13 +186,18 @@ val makers = taker.fetchAllMakers()                                             
 
 ### Seed phrase and restore
 
+A wallet made before phrases were stored has none to read. Attach the phrase the user already has first:
+
+```kotlin
+taker.attachSeedPhrase(walletPassword = walletPassword, phrase = usersOriginalPhrase)
+```
+
+Then read it back and confirm the backup:
+
 ```kotlin
 val phrase = taker.getSeedPhrase(walletPassword = walletPassword)    // show the 12 words to the user
 taker.confirmSeedBackup(walletPassword = walletPassword)             // user wrote the words down
 val backedUp = taker.isSeedBackedUp()                                // has the user confirmed the backup
-
-// Wallet made before phrases were stored: pass the phrase the user already has.
-taker.attachSeedPhrase(walletPassword = walletPassword, phrase = usersOriginalPhrase)
 
 validateSeedPhrase(phrase)                                           // check words and checksum
 val options = RestoreOptions(birthday = 800_000u, bondHints = listOf(BondHint(index = 0u, locktime = 900_000u)))

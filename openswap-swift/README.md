@@ -191,13 +191,18 @@ let makers = try taker.fetchAllMakers()                                         
 
 ### Seed phrase and restore
 
+A wallet made before phrases were stored has none to read. Attach the phrase the user already has first:
+
+```swift
+try taker.attachSeedPhrase(walletPassword: walletPassword, phrase: usersOriginalPhrase)
+```
+
+Then read it back and confirm the backup:
+
 ```swift
 let phrase = try taker.getSeedPhrase(walletPassword: walletPassword)      // show the 12 words to the user
 try taker.confirmSeedBackup(walletPassword: walletPassword)               // user wrote the words down
 let backedUp = try taker.isSeedBackedUp()                                 // has the user confirmed the backup
-
-// Wallet made before phrases were stored: pass the phrase the user already has.
-try taker.attachSeedPhrase(walletPassword: walletPassword, phrase: usersOriginalPhrase)
 
 try validateSeedPhrase(phrase: phrase)                                    // check words and checksum
 let options = RestoreOptions(birthday: 800_000, bondHints: [BondHint(index: 0, locktime: 900_000)])

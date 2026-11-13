@@ -16,6 +16,7 @@ import openswapBindings, {
   type TakerLike,
 } from './generated/openswap'
 
+export { TakerError } from './generated/openswap'
 export type {
   RpcConfig,
   BackendConfig,

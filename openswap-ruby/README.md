@@ -190,13 +190,18 @@ makers = taker.fetch_all_makers                                               # 
 
 ### Seed phrase and restore
 
+A wallet made before phrases were stored has none to read. Attach the phrase the user already has first:
+
+```ruby
+taker.attach_seed_phrase(wallet_password, users_original_phrase)
+```
+
+Then read it back and confirm the backup:
+
 ```ruby
 phrase = taker.get_seed_phrase(wallet_password)                 # show the 12 words to the user
 taker.confirm_seed_backup(wallet_password)                      # user wrote the words down
 backed_up = taker.is_seed_backed_up                             # has the user confirmed the backup
-
-# Wallet made before phrases were stored: pass the phrase the user already has.
-taker.attach_seed_phrase(wallet_password, users_original_phrase)
 
 Openswap.validate_seed_phrase(phrase)                           # check words and checksum
 options = Openswap::RestoreOptions.new(birthday: 800_000, address_gap: nil, bond_gap: nil, bond_hints: [])
