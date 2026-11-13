@@ -189,6 +189,29 @@ try taker.recoverActiveSwap()                                                   
 let makers = try taker.fetchAllMakers()                                                // read maker addresses across all states
 ```
 
+### Seed phrase and restore
+
+A wallet made before phrases were stored has none to read. Attach the phrase the user already has first:
+
+```swift
+try taker.attachSeedPhrase(walletPassword: walletPassword, phrase: usersOriginalPhrase)
+```
+
+Then read it back and confirm the backup:
+
+```swift
+let phrase = try taker.getSeedPhrase(walletPassword: walletPassword)      // show the 12 words to the user
+try taker.confirmSeedBackup(walletPassword: walletPassword)               // user wrote the words down
+let backedUp = try taker.isSeedBackedUp()                                 // has the user confirmed the backup
+
+try validateSeedPhrase(phrase: phrase)                                    // check words and checksum
+let options = RestoreOptions(birthday: 800_000, bondHints: [BondHint(index: 0, locktime: 900_000)])
+try restoreWalletFromSeedPhrase(dataDir: dataDir, walletFileName: "restored", backendConfig: backendConfig, phrase: phrase, password: password, options: options)
+try restoreWalletFromBackup(dataDir: dataDir, walletFileName: nil, backendConfig: backendConfig, backupFilePath: backupPath, password: password, options: options)
+```
+
+Restore functions throw `TakerError.Wallet` when the restore fails and `TakerError.General` for invalid backend settings or bond hints. `backendConfig` can be Bitcoin Core or Electrum. Show the seed phrase once and never log or store it. Your language keeps its own copy of the string, which this library cannot wipe. Restore needs a reachable node and cannot bring back open swaps.
+
 ### AddressType, Balances, and SwapReport
 
 ```swift

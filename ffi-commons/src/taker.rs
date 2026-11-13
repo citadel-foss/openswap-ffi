@@ -550,6 +550,79 @@ impl Taker {
         Ok(())
     }
 
+    /// Returns the wallet's seed phrase so the app can show it to the user.
+    ///
+    /// Needs the current wallet password on every call. Show the phrase once, then
+    /// drop it. Never log or store it. The copy that crosses into your language
+    /// cannot be wiped by this library.
+    pub fn get_seed_phrase(&self, wallet_password: String) -> Result<String, TakerError> {
+        let taker = self.taker.lock().map_err(|_| TakerError::General {
+            msg: "Failed to acquire taker lock".to_string(),
+        })?;
+        let wallet = taker.get_wallet().read().map_err(|_| TakerError::General {
+            msg: "Failed to acquire wallet read lock".to_string(),
+        })?;
+        let phrase = wallet
+            .get_wallet_mnemonic_gui_app(Some(wallet_password))
+            .map_err(|error| TakerError::Wallet {
+                msg: format!("Get seed phrase error: {error}"),
+            })?;
+        Ok(String::clone(&phrase))
+    }
+
+    /// Records that the user wrote the seed phrase down.
+    ///
+    /// Call this after showing the phrase and checking a few re-typed words.
+    pub fn confirm_seed_backup(&self, wallet_password: String) -> Result<(), TakerError> {
+        let taker = self.taker.lock().map_err(|_| TakerError::General {
+            msg: "Failed to acquire taker lock".to_string(),
+        })?;
+        taker
+            .get_wallet()
+            .write()
+            .map_err(|_| TakerError::General {
+                msg: "Failed to acquire wallet write lock".to_string(),
+            })?
+            .confirm_seed_backup_gui_app(Some(wallet_password))
+            .map_err(|error| TakerError::Wallet {
+                msg: format!("Confirm seed backup error: {error}"),
+            })
+    }
+
+    /// Stores the user's original seed phrase in a wallet that has none.
+    ///
+    /// The phrase must match this wallet's keys. A stored phrase is never replaced.
+    pub fn attach_seed_phrase(
+        &self,
+        wallet_password: String,
+        phrase: String,
+    ) -> Result<(), TakerError> {
+        let taker = self.taker.lock().map_err(|_| TakerError::General {
+            msg: "Failed to acquire taker lock".to_string(),
+        })?;
+        taker
+            .get_wallet()
+            .write()
+            .map_err(|_| TakerError::General {
+                msg: "Failed to acquire wallet write lock".to_string(),
+            })?
+            .attach_wallet_mnemonic_gui_app(Some(wallet_password), phrase)
+            .map_err(|error| TakerError::Wallet {
+                msg: format!("Attach seed phrase error: {error}"),
+            })
+    }
+
+    /// Returns true once the user has confirmed writing the seed phrase down.
+    pub fn is_seed_backed_up(&self) -> Result<bool, TakerError> {
+        let taker = self.taker.lock().map_err(|_| TakerError::General {
+            msg: "Failed to acquire taker lock".to_string(),
+        })?;
+        let wallet = taker.get_wallet().read().map_err(|_| TakerError::General {
+            msg: "Failed to acquire wallet read lock".to_string(),
+        })?;
+        Ok(wallet.seed_backed_up())
+    }
+
     /// Locks the fidelity and live_contract utxos which are not considered for spending from the wallet.
     pub fn lock_unspendable_utxos(&self) -> Result<(), TakerError> {
         let taker = self.taker.lock().map_err(|_| TakerError::General {

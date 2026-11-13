@@ -7,7 +7,7 @@
 
 use crate::{
     taker::{SwapParams, Taker},
-    types::{AddressType, BackendConfig, Balances},
+    types::{AddressType, BackendConfig, Balances, validate_seed_phrase},
 };
 use bitcoin::Amount;
 use bitcoind::bitcoincore_rpc::{Auth, Client, RpcApi};
@@ -299,6 +299,45 @@ fn wait_for_suitable_makers(taker: &Taker, swap: &Swap, send: u64, maker_address
     );
 }
 
+/// Checks the seed phrase API against the real encrypted wallet the taker created.
+fn check_seed_phrase(taker: &Taker, name: &str) {
+    // A wrong password must be refused for both reading and confirming.
+    assert!(
+        taker.get_seed_phrase("wrong-password".into()).is_err(),
+        "{name}: a wrong password must not reveal the seed phrase"
+    );
+    assert!(
+        taker.confirm_seed_backup("wrong-password".into()).is_err(),
+        "{name}: a wrong password must not confirm the backup"
+    );
+    assert!(
+        !taker.is_seed_backed_up().unwrap(),
+        "{name}: a new wallet starts as not backed up"
+    );
+
+    let phrase = taker
+        .get_seed_phrase(WALLET_PASSWORD.into())
+        .expect("get seed phrase");
+    assert_eq!(phrase.split_whitespace().count(), 12, "{name}: 12 words");
+    validate_seed_phrase(phrase.clone()).expect("the wallet's own phrase is valid");
+
+    // A stored phrase is never replaced.
+    assert!(
+        taker
+            .attach_seed_phrase(WALLET_PASSWORD.into(), phrase)
+            .is_err(),
+        "{name}: attaching over a stored phrase must fail"
+    );
+
+    taker
+        .confirm_seed_backup(WALLET_PASSWORD.into())
+        .expect("confirm seed backup");
+    assert!(
+        taker.is_seed_backed_up().unwrap(),
+        "{name}: the backup stays confirmed"
+    );
+}
+
 /// Run one taker end-to-end: init → fund → sync → 2-maker openswap → assert.
 /// `send` sats are swapped; the taker is funded with `2 * send`.
 pub fn run_swap(swap: &Swap, send: u64) {
@@ -319,6 +358,7 @@ pub fn run_swap(swap: &Swap, send: u64) {
     wait_for_suitable_makers(&taker, swap, send, &maker_addresses);
 
     assert_eq!(taker.get_wallet_name().unwrap(), swap.wallet);
+    check_seed_phrase(&taker, swap.name);
 
     // Fund with 2x the swap amount and wait for it to be visible.
     fund_taker(&taker, &funding, swap.addr_type, send * 2);

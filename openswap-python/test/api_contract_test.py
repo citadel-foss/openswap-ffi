@@ -32,20 +32,27 @@ class ApiContractTest(unittest.TestCase):
             "create_default_rpc_config",
             "is_wallet_encrypted",
             "openswap_ffi_version",
+            "restore_wallet_from_backup",
+            "restore_wallet_from_seed_phrase",
             "restore_wallet_gui_app",
             "setup_logging",
+            "validate_seed_phrase",
         }
         methods = {
+            "attach_seed_phrase",
             "backup",
+            "confirm_seed_backup",
             "display_offer",
             "fetch_all_makers",
             "fetch_offers",
             "get_balances",
             "get_next_external_address",
             "get_next_internal_addresses",
+            "get_seed_phrase",
             "get_transactions",
             "get_wallet_name",
             "init",
+            "is_seed_backed_up",
             "list_all_utxo_spend_info",
             "lock_unspendable_utxos",
             "poll_maker",
@@ -114,6 +121,56 @@ class ApiContractTest(unittest.TestCase):
             error.exception.msg,
             "Invalid backend kind: invalid (expected rpc or electrum)",
         )
+
+    def test_seed_phrase_validation_and_restore_errors(self):
+        valid = " ".join(["abandon"] * 11 + ["about"])
+        openswap.validate_seed_phrase(valid)
+        with self.assertRaises(openswap.TakerError.Wallet) as error:
+            openswap.validate_seed_phrase("abandon abandon abandon")
+        self.assertIn("Invalid seed phrase", error.exception.msg)
+
+        rpc_backend = openswap.BackendConfig(
+            kind="rpc",
+            url=None,
+            username=None,
+            password=None,
+            wallet_name=None,
+            zmq_addr=None,
+            socks5=None,
+            timeout=None,
+            poll_interval_secs=None,
+            max_retries=None,
+        )
+        data_dir = tempfile.mkdtemp(prefix="openswap-restore-")
+        # An empty password is refused before any file or node is touched. The
+        # restore must raise instead of silently logging the failure.
+        with self.assertRaises(openswap.TakerError.Wallet) as error:
+            openswap.restore_wallet_from_seed_phrase(
+                data_dir, "wallet", rpc_backend, valid, ""
+            )
+        self.assertIn("passphrase", error.exception.msg)
+        with self.assertRaises(openswap.TakerError.Wallet) as error:
+            openswap.restore_wallet_from_backup(
+                data_dir, None, rpc_backend, "/nonexistent/backup.json", ""
+            )
+        self.assertIn("passphrase", error.exception.msg)
+        with self.assertRaises(openswap.TakerError.Wallet) as error:
+            openswap.restore_wallet_gui_app(
+                data_dir,
+                None,
+                openswap.create_default_rpc_config(),
+                "/nonexistent/backup.json",
+                None,
+            )
+        self.assertIn("passphrase", error.exception.msg)
+
+    def test_restore_options_defaults_and_bond_hints(self):
+        options = openswap.RestoreOptions()
+        self.assert_record(
+            options, birthday=None, address_gap=None, bond_gap=None, bond_hints=[]
+        )
+        hint = openswap.BondHint(index=3, locktime=900)
+        self.assert_record(hint, index=3, locktime=900)
 
     def test_scalar_and_configuration_records_preserve_every_field(self):
         self.assert_record(openswap.Address(addr="bc1qexample"), addr="bc1qexample")

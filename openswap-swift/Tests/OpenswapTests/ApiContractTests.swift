@@ -40,6 +40,50 @@ final class ApiContractTests: XCTestCase {
         }
     }
 
+    func testSeedPhraseValidationAndRestoreErrorsAreThrown() throws {
+        let valid = (Array(repeating: "abandon", count: 11) + ["about"]).joined(separator: " ")
+        XCTAssertNoThrow(try validateSeedPhrase(phrase: valid))
+        XCTAssertThrowsError(try validateSeedPhrase(phrase: "abandon abandon abandon")) { error in
+            guard case .Wallet(let msg)? = error as? TakerError else {
+                return XCTFail("expected a wallet error, got \(error)")
+            }
+            XCTAssertTrue(msg.hasPrefix("Invalid seed phrase"))
+        }
+
+        let rpcBackend = BackendConfig(
+            kind: "rpc", url: nil, username: nil, password: nil,
+            walletName: nil, zmqAddr: nil, socks5: nil, timeout: nil,
+            pollIntervalSecs: nil, maxRetries: nil)
+        let dataDir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("openswap-restore-\(UUID().uuidString)").path
+        // An empty password is refused before any file or node is touched. The
+        // restore must throw instead of silently logging the failure.
+        XCTAssertThrowsError(try restoreWalletFromSeedPhrase(
+            dataDir: dataDir, walletFileName: "wallet", backendConfig: rpcBackend,
+            phrase: valid, password: "", options: nil)) { error in
+            guard case .Wallet(let msg)? = error as? TakerError else {
+                return XCTFail("expected a wallet error, got \(error)")
+            }
+            XCTAssertTrue(msg.contains("passphrase"))
+        }
+        XCTAssertThrowsError(try restoreWalletFromBackup(
+            dataDir: dataDir, walletFileName: nil, backendConfig: rpcBackend,
+            backupFilePath: "/nonexistent/backup.json", password: "", options: nil)) { error in
+            guard case .Wallet(let msg)? = error as? TakerError else {
+                return XCTFail("expected a wallet error, got \(error)")
+            }
+            XCTAssertTrue(msg.contains("passphrase"))
+        }
+        XCTAssertThrowsError(try restoreWalletGuiApp(
+            dataDir: dataDir, walletFileName: nil, rpcConfig: createDefaultRpcConfig(),
+            backupFilePath: "/nonexistent/backup.json", password: nil)) { error in
+            guard case .Wallet(let msg)? = error as? TakerError else {
+                return XCTFail("expected a wallet error, got \(error)")
+            }
+            XCTAssertTrue(msg.contains("passphrase"))
+        }
+    }
+
     func testScalarAndWalletRecordsPreserveEveryField() {
         XCTAssertEqual(Address(addr: "bc1qexample").addr, "bc1qexample")
         XCTAssertEqual(AddressType(addrType: "P2TR").addrType, "P2TR")

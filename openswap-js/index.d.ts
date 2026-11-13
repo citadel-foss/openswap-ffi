@@ -33,7 +33,42 @@ export declare class Taker {
   getName(): string
   listAllUtxoSpendInfo(): Array<[ListUnspentResultEntry, UtxoSpendInfo]>
   backup(destinationPath: string, password: string, walletPassword?: string | undefined | null): void
+  /**
+   * Restores a wallet from an encrypted backup file on a Bitcoin Core RPC backend.
+   * Throws if the restore fails, for example on a wrong password or an unreachable node.
+   */
   static restoreWalletGuiApp(dataDir: string | undefined | null, walletFileName: string | undefined | null, rpcConfig: RpcConfig, backupFile: string, password?: string | undefined | null): void
+  /**
+   * Restores a wallet from an encrypted backup file on a Bitcoin Core or Electrum backend.
+   * The backup password also becomes the restored wallet's password.
+   * Throws if the restore fails.
+   */
+  static restoreWalletFromBackup(dataDir: string | undefined | null, walletFileName: string | undefined | null, backendConfig: BackendConfig, backupFile: string, password: string, options?: RestoreOptions | undefined | null): void
+  /**
+   * Restores a wallet from a BIP39 seed phrase. Refuses to overwrite an existing wallet.
+   * Open swaps cannot be recovered from a seed phrase. Throws if the restore fails.
+   */
+  static restoreWalletFromSeedPhrase(dataDir: string | undefined | null, walletFileName: string, backendConfig: BackendConfig, phrase: string, password: string, options?: RestoreOptions | undefined | null): void
+  /** Checks the words and checksum of a seed phrase without touching any wallet. */
+  static validateSeedPhrase(phrase: string): void
+  /**
+   * Returns the wallet's seed phrase so the app can show it to the user.
+   * Needs the current wallet password on every call. Show it once, then drop it.
+   * Never log or store it.
+   */
+  getSeedPhrase(walletPassword: string): string
+  /**
+   * Records that the user wrote the seed phrase down. Call it after showing the
+   * phrase and checking a few re-typed words.
+   */
+  confirmSeedBackup(walletPassword: string): void
+  /**
+   * Stores the user's original seed phrase in a wallet that has none.
+   * The phrase must match this wallet's keys. A stored phrase is never replaced.
+   */
+  attachSeedPhrase(walletPassword: string, phrase: string): void
+  /** Returns true once the user has confirmed writing the seed phrase down. */
+  isSeedBackedUp(): boolean
   lockUnspendableUtxos(): void
   sendToAddress(address: string, amount: number, feeRate?: number | undefined | null, manuallySelectedOutpoints?: Array<OutPoint> | undefined | null): Txid
   /** Get wallet balances */
@@ -72,6 +107,14 @@ export interface BackendConfig {
   timeout?: number
   pollIntervalSecs?: number
   maxRetries?: number
+}
+
+/** A fidelity bond the user remembers, used to find bonds that were never announced. */
+export interface BondHint {
+  /** The bond key's index in the fidelity derivation path. Must be below 2^31. */
+  index: number
+  /** The bond's locktime as a consensus value (block height or Unix time). */
+  locktime: number
 }
 
 export interface Balances {
@@ -226,6 +269,18 @@ export interface RpcConfig {
   username: string
   password: string
   walletName: string
+}
+
+/** Tunes how far a wallet restore searches. Every field is optional. */
+export interface RestoreOptions {
+  /** First block the Core rescan reads. Omit to keep the backup's birthday, else genesis. */
+  birthday?: number
+  /** Unused addresses in a row that end the search on each keychain. */
+  addressGap?: number
+  /** Unused bond indexes in a row that end the bond search. */
+  bondGap?: number
+  /** Bonds made without an OP_RETURN announcement, which only these find. */
+  bondHints?: Array<BondHint>
 }
 
 export interface ScriptBuf {

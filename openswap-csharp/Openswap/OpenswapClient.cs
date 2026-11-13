@@ -95,6 +95,46 @@ public sealed class OpenswapClient : IDisposable
     public void Backup(string destinationPath, string password, string? walletPassword) =>
         _inner.Backup(destinationPath, password, walletPassword);
 
+    /// <summary>
+    /// Returns the wallet's seed phrase to show the user. Needs the wallet password on every call.
+    /// Show it once, then drop it. Never log or store it; the managed copy cannot be wiped.
+    /// </summary>
+    public string GetSeedPhrase(string walletPassword) => _inner.GetSeedPhrase(walletPassword);
+
+    /// <summary>Records that the user wrote the seed phrase down.</summary>
+    public void ConfirmSeedBackup(string walletPassword) => _inner.ConfirmSeedBackup(walletPassword);
+
+    /// <summary>Stores the user's original seed phrase in a wallet that has none.</summary>
+    public void AttachSeedPhrase(string walletPassword, string phrase) =>
+        _inner.AttachSeedPhrase(walletPassword, phrase);
+
+    /// <summary>Returns true once the user has confirmed writing the seed phrase down.</summary>
+    public bool IsSeedBackedUp() => _inner.IsSeedBackedUp();
+
+    /// <summary>Checks the words and checksum of a seed phrase. Throws if it is invalid.</summary>
+    public static void ValidateSeedPhrase(string phrase) =>
+        Native.Openswap.ValidateSeedPhrase(phrase);
+
+    /// <summary>
+    /// Restores a wallet from an encrypted backup file. The backup password also becomes the
+    /// restored wallet's password. Throws if the restore fails.
+    /// </summary>
+    public static void RestoreWalletFromBackup(
+        string? dataDir, string? walletFileName, BackendConfig backendConfig,
+        string backupFilePath, string password, RestoreOptions? options = null) =>
+        Native.Openswap.RestoreWalletFromBackup(
+            dataDir, walletFileName, backendConfig, backupFilePath, password, options);
+
+    /// <summary>
+    /// Restores a wallet from a seed phrase. Refuses to overwrite an existing wallet.
+    /// Open swaps cannot be recovered from a seed phrase. Throws if the restore fails.
+    /// </summary>
+    public static void RestoreWalletFromSeedPhrase(
+        string? dataDir, string walletFileName, BackendConfig backendConfig,
+        string phrase, string password, RestoreOptions? options = null) =>
+        Native.Openswap.RestoreWalletFromSeedPhrase(
+            dataDir, walletFileName, backendConfig, phrase, password, options);
+
     /// <summary>Off-thread <see cref="SyncWallet"/>.</summary>
     public Task SyncWalletAsync(CancellationToken ct = default) => Task.Run(SyncWallet, ct);
 

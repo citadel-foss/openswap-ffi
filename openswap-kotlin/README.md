@@ -184,6 +184,29 @@ taker.recoverActiveSwap()                                                       
 val makers = taker.fetchAllMakers()                                                    // read maker addresses across all states
 ```
 
+### Seed phrase and restore
+
+A wallet made before phrases were stored has none to read. Attach the phrase the user already has first:
+
+```kotlin
+taker.attachSeedPhrase(walletPassword = walletPassword, phrase = usersOriginalPhrase)
+```
+
+Then read it back and confirm the backup:
+
+```kotlin
+val phrase = taker.getSeedPhrase(walletPassword = walletPassword)    // show the 12 words to the user
+taker.confirmSeedBackup(walletPassword = walletPassword)             // user wrote the words down
+val backedUp = taker.isSeedBackedUp()                                // has the user confirmed the backup
+
+validateSeedPhrase(phrase)                                           // check words and checksum
+val options = RestoreOptions(birthday = 800_000u, bondHints = listOf(BondHint(index = 0u, locktime = 900_000u)))
+restoreWalletFromSeedPhrase(dataDir, "restored", backendConfig, phrase, password, options)
+restoreWalletFromBackup(dataDir, null, backendConfig, backupPath, password, options)
+```
+
+Restore functions throw `TakerException.Wallet` when the restore fails and `TakerException.General` for invalid backend settings or bond hints. `backendConfig` can be Bitcoin Core or Electrum. Show the seed phrase once and never log or store it. Your language keeps its own copy of the string, which this library cannot wipe. Restore needs a reachable node and cannot bring back open swaps.
+
 ### AddressType, Balances, and SwapReport
 
 ```kotlin
